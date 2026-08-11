@@ -705,7 +705,7 @@ button:disabled {
   bottom: 0.75rem;
   left: 0.75rem;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   padding: 0.3rem;
   border: 1px solid rgba(220, 230, 223, 0.9);
   border-radius: 1rem;

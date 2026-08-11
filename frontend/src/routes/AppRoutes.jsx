@@ -5,6 +5,7 @@ import { CategoriesPage } from '../pages/CategoriesPage.jsx'
 import { CardsPage } from '../pages/CardsPage.jsx'
 import { HomePage } from '../pages/HomePage.jsx'
 import { TransactionsPage } from '../pages/TransactionsPage.jsx'
+import { RecurrencesPage } from '../pages/RecurrencesPage.jsx'
 import { LoginPage } from '../pages/auth/LoginPage.jsx'
 import { RegisterPage } from '../pages/auth/RegisterPage.jsx'
 import { ProtectedRoute } from './ProtectedRoute.jsx'
@@ -28,6 +29,7 @@ export function AppRoutes() {
           <Route path="/categorias" element={<CategoriesPage />} />
           <Route path="/cartoes" element={<CardsPage />} />
           <Route path="/movimentacoes" element={<TransactionsPage />} />
+          <Route path="/recorrencias" element={<RecurrencesPage />} />
         </Route>
       </Route>
 

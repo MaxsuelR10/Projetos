@@ -37,6 +37,11 @@ até 120 parcelas, faturas por competência e pagamento de fatura vinculado a
 uma conta. A compra não reduz saldo: apenas o pagamento gera a transação e
 altera a conta, dentro da mesma transação do PostgreSQL.
 
+A Fase 5 adiciona recorrências semanais, quinzenais, mensais, anuais ou por
+intervalo customizado. As ocorrências são geradas localmente como lançamentos
+pendentes, sem duplicidade. Também inclui assinaturas com custo mensal
+equivalente calculado localmente, sem consultar APIs externas.
+
 ## Tecnologias
 
 ### Frontend
