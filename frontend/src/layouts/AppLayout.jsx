@@ -8,6 +8,7 @@ const navigation = [
   { to: '/movimentacoes', label: 'Movimentos', symbol: '↕' },
   { to: '/cartoes', label: 'Cartões', symbol: '▣' },
   { to: '/recorrencias', label: 'Planejar', symbol: '↻' },
+  { to: '/planejamento', label: 'Metas', symbol: '◎' },
 ]
 
 export function AppLayout() {

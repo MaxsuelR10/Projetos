@@ -1,0 +1,2 @@
+import { api } from './api.js'
+export const planningService={async budgets(year,month){return (await api.get('/planning/budgets',{params:{year,month}})).data.budgets},async saveBudget(data){return (await api.post('/planning/budgets',data)).data.budget},async goals(){return (await api.get('/planning/goals')).data.goals},async saveGoal(data){return (await api.post('/planning/goals',data)).data.goal}}
