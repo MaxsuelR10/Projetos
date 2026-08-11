@@ -1,0 +1,1 @@
+import {api}from'./api.js';export const investmentService={async list(){return(await api.get('/investments')).data},async create(d){return(await api.post('/investments',d)).data.investment},async update(id,d){return(await api.patch(`/investments/${id}`,d)).data.investment}}

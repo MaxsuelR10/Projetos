@@ -7,6 +7,7 @@ import { transactionRouter, transferRouter } from "./transaction.routes.js";
 import { recurrenceRouter, subscriptionRouter } from "./recurrence.routes.js";
 import { dashboardRouter } from "./dashboard.routes.js";
 import { planningRouter } from "./planning.routes.js";
+import { investmentRouter } from "./investment.routes.js";
 
 export const apiRouter = Router();
 
@@ -26,3 +27,4 @@ apiRouter.use("/recurrences", recurrenceRouter);
 apiRouter.use("/subscriptions", subscriptionRouter);
 apiRouter.use("/dashboard", dashboardRouter);
 apiRouter.use("/planning", planningRouter);
+apiRouter.use("/investments", investmentRouter);

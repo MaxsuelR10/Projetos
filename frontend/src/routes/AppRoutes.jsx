@@ -7,6 +7,7 @@ import { HomePage } from '../pages/HomePage.jsx'
 import { TransactionsPage } from '../pages/TransactionsPage.jsx'
 import { RecurrencesPage } from '../pages/RecurrencesPage.jsx'
 import { PlanningPage } from '../pages/PlanningPage.jsx'
+import { InvestmentsPage } from '../pages/InvestmentsPage.jsx'
 import { LoginPage } from '../pages/auth/LoginPage.jsx'
 import { RegisterPage } from '../pages/auth/RegisterPage.jsx'
 import { ProtectedRoute } from './ProtectedRoute.jsx'
@@ -32,6 +33,7 @@ export function AppRoutes() {
           <Route path="/movimentacoes" element={<TransactionsPage />} />
           <Route path="/recorrencias" element={<RecurrencesPage />} />
           <Route path="/planejamento" element={<PlanningPage />} />
+          <Route path="/investimentos" element={<InvestmentsPage />} />
         </Route>
       </Route>
 

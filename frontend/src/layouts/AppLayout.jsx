@@ -9,6 +9,7 @@ const navigation = [
   { to: '/cartoes', label: 'Cartões', symbol: '▣' },
   { to: '/recorrencias', label: 'Planejar', symbol: '↻' },
   { to: '/planejamento', label: 'Metas', symbol: '◎' },
+  { to: '/investimentos', label: 'Investir', symbol: '↗' },
 ]
 
 export function AppLayout() {
