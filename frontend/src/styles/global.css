@@ -189,6 +189,59 @@ button:disabled {
   line-height: 1.4;
 }
 
+.form-help { margin: 0; padding: 0.75rem 0.85rem; border-radius: var(--radius-sm); color: var(--color-muted); background: var(--color-surface-soft); font-size: 0.84rem; font-weight: 600; line-height: 1.45; }
+.form-help a { color: var(--color-brand); font-weight: 800; }
+
+.category-select { position: relative; }
+.category-select-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 3.1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.95rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  background: var(--color-surface-soft);
+  font: inherit;
+  text-align: left;
+}
+.category-select-trigger:focus-visible {
+  border-color: #4a9c78;
+  background: var(--color-surface);
+  box-shadow: 0 0 0 4px rgba(74, 156, 120, 0.13);
+}
+.category-select-options {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  max-height: 13.75rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: 0 12px 24px rgba(18, 33, 28, 0.14);
+}
+.category-select-options button {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.95rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.category-select-options button:last-child { border-bottom: 0; }
+.category-select-options button:hover,
+.category-select-options button:focus-visible,
+.category-select-options button.is-selected { background: var(--color-surface-soft); }
+
 .form-alert {
   padding: 0.85rem 1rem;
   border: 1px solid #fecdca;
@@ -377,7 +430,8 @@ button:disabled {
 
 .app-shell {
   min-height: 100svh;
-  padding-bottom: 5.3rem;
+  --mobile-nav-space: calc(8.75rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: var(--mobile-nav-space);
 }
 
 .app-header {
@@ -435,7 +489,8 @@ button:disabled {
   margin: 0 auto;
 }
 
-.page-stack { display: grid; gap: 1.25rem; padding: 1.25rem 0 2rem; }
+.app-content { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.page-stack { display: grid; gap: 1.25rem; padding: 1.25rem 0 calc(2rem + var(--mobile-nav-space)); }
 
 .page-heading h1,
 .page-heading h2,
@@ -500,6 +555,9 @@ button:disabled {
 .month-picker input { min-height: 2.6rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
 .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.7rem; }
 .metric-grid article, .dashboard-panel { padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); }
+.metric-grid .metric-alert { border-color: #e8c96a; background: #fffaf0; }
+.metric-grid .metric-alert.is-overdue { border-color: #e8a29c; background: var(--color-danger-soft); }
+.metric-grid .metric-alert small { display: block; margin-top: 0.35rem; color: var(--color-muted); font-weight: 700; }
 .metric-grid span { display: block; color: var(--color-muted); font-size: 0.74rem; font-weight: 750; }.metric-grid strong { display: block; margin-top: 0.35rem; font-size: 1.05rem; }
 .dashboard-panel h2 { margin: 0; font-size: 1.25rem; }.bar-chart { height: 11rem; display: flex; align-items: end; justify-content: space-between; gap: 0.5rem; margin-top: 1rem; }.bar-group { height: 100%; flex: 1; display: grid; grid-template-rows: 1fr auto; gap: 0.35rem; text-align: center; }.bars { display: flex; align-items: end; justify-content: center; gap: 0.2rem; }.bars i { width: min(0.75rem, 35%); min-height: 2px; border-radius: 0.2rem 0.2rem 0 0; }.bar-income { background: var(--color-brand); }.bar-expense { background: #d75a50; }.bar-group small { color: var(--color-muted); font-size: 0.62rem; }
 
@@ -546,11 +604,13 @@ button:disabled {
 .form-field-wide { grid-column: 1 / -1; }
 
 .card-selector { display: grid; gap: 0.8rem; grid-auto-flow: column; grid-auto-columns: minmax(15rem, 85%); overflow-x: auto; padding: 0.15rem 0.1rem 0.55rem; }
-.credit-card { min-height: 10rem; display: grid; align-content: space-between; gap: 0.45rem; padding: 1.1rem; border: 2px solid transparent; border-radius: var(--radius-md); color: #f4f8ff; text-align: left; background: linear-gradient(135deg, var(--card-color), #13233f); box-shadow: 0 12px 24px rgba(18, 33, 60, 0.17); }
+.credit-card { position: relative; min-height: 10rem; display: grid; align-content: space-between; gap: 0.45rem; padding: 1.1rem; border: 2px solid transparent; border-radius: var(--radius-md); color: #f4f8ff; cursor: pointer; text-align: left; background: linear-gradient(135deg, var(--card-color), #13233f); box-shadow: 0 12px 24px rgba(18, 33, 60, 0.17); }
 .credit-card.is-selected { border-color: #a8e6c9; outline: 3px solid rgba(29, 107, 79, 0.15); }
 .credit-card.is-inactive { opacity: 0.55; }
 .credit-card span, .credit-card small { color: rgba(244, 248, 255, 0.72); font-size: 0.73rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
 .credit-card strong { font-size: 1.1rem; letter-spacing: -0.02em; }
+.card-edit-button { position: absolute; top: 0.55rem; right: 0.55rem; display: grid; width: 2.1rem; height: 2.1rem; place-items: center; padding: 0; border: 1px solid rgba(255, 255, 255, 0.48); border-radius: 50%; color: #fff; background: rgba(255, 255, 255, 0.16); font-size: 1.25rem; line-height: 1; }
+.card-edit-button:hover, .card-edit-button:focus-visible { background: rgba(255, 255, 255, 0.3); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.22); }
 
 .limit-summary { display: grid; gap: 0.7rem; }
 .limit-summary article { display: grid; gap: 0.35rem; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
@@ -708,10 +768,10 @@ button:disabled {
   position: fixed;
   z-index: 10;
   right: 0.75rem;
-  bottom: 0.75rem;
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
   left: 0.75rem;
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: 0.3rem;
   border: 1px solid rgba(220, 230, 223, 0.9);
   border-radius: 1rem;
@@ -739,6 +799,7 @@ button:disabled {
 
 @media (min-width: 64rem) {
   .app-shell { padding-bottom: 0; }
+  .page-stack { padding-bottom: 2rem; }
   .app-header { width: min(100% - 4rem, 74rem); }
   .app-content { width: min(100% - 4rem, 74rem); }
   .desktop-nav { width: min(100% - 4rem, 74rem); display: flex; gap: 0.4rem; margin: 0 auto; padding-bottom: 0.8rem; border-bottom: 1px solid var(--color-line); }

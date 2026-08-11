@@ -22,6 +22,7 @@ const transactionFields = {
   dueDate: optionalDateSchema,
   status: transactionStatusSchema.optional(),
   paymentMethod: paymentMethodSchema.nullable().optional(),
+  creditCardId: idSchema.nullable().optional(),
   notes: optionalText(5000),
 };
 
@@ -31,6 +32,10 @@ export const transactionIdSchema = z.object({
 
 export const createTransactionSchema = z.object({
   body: z.object(transactionFields).strict(),
+}).superRefine(({ body }, context) => {
+  if (body.paymentMethod === "CREDIT_CARD" && !body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Selecione o cartão de crédito utilizado" });
+  if (body.paymentMethod === "CREDIT_CARD" && body.type !== "EXPENSE") context.addIssue({ code: "custom", path: ["body", "type"], message: "Cartão de crédito só pode ser usado em despesas" });
+  if (body.paymentMethod !== "CREDIT_CARD" && body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Cartão informado para uma forma de pagamento diferente" });
 });
 
 export const updateTransactionSchema = z.object({
@@ -46,8 +51,12 @@ export const updateTransactionSchema = z.object({
     dueDate: transactionFields.dueDate,
     status: transactionFields.status,
     paymentMethod: transactionFields.paymentMethod,
+    creditCardId: transactionFields.creditCardId,
     notes: transactionFields.notes,
   }).strict().refine((data) => Object.keys(data).length > 0, "Informe ao menos um campo para atualizar"),
+}).superRefine(({ body }, context) => {
+  if (body.paymentMethod === "CREDIT_CARD" && !body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Selecione o cartão de crédito utilizado" });
+  if (body.paymentMethod !== undefined && body.paymentMethod !== "CREDIT_CARD" && body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Cartão informado para uma forma de pagamento diferente" });
 });
 
 export const listTransactionsSchema = z.object({

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  cancel,
   create,
   createTransferHandler,
   list,
@@ -27,6 +28,7 @@ transactionRouter.use(requireAuth);
 transactionRouter.get("/", validate(listTransactionsSchema), asyncHandler(list));
 transactionRouter.post("/", validate(createTransactionSchema), asyncHandler(create));
 transactionRouter.patch("/:id", validate(updateTransactionSchema), asyncHandler(update));
+transactionRouter.patch("/:id/cancel", validate(transactionIdSchema), asyncHandler(cancel));
 transactionRouter.delete("/:id", validate(transactionIdSchema), asyncHandler(remove));
 
 transferRouter.use(requireAuth);

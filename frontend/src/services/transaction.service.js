@@ -19,4 +19,8 @@ export const transactionService = {
   async remove(id) {
     await api.delete(`/transactions/${id}`)
   },
+
+  async cancel(id) {
+    await api.patch(`/transactions/${id}/cancel`)
+  },
 }

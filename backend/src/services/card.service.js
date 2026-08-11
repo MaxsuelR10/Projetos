@@ -109,6 +109,34 @@ export async function deleteCard(userId, id) {
   await prisma.creditCard.delete({ where: { id: card.id } });
 }
 
+export async function createPurchaseInTransaction(db, userId, cardId, data) {
+  const card = await findCard(db, userId, cardId, true);
+  if (card.type !== "CREDIT") throw new AppError("CARD_NOT_CREDIT", 400, "CARD_NOT_CREDIT");
+  await validateCategory(db, userId, data);
+  const used = await db.cardInstallment.aggregate({ where: { userId, creditCardId: card.id, status: "PENDING" }, _sum: { amount: true } });
+  if (new Prisma.Decimal(used._sum.amount ?? 0).plus(data.totalAmount).greaterThan(card.creditLimit)) throw new AppError("Esta compra ultrapassa o limite disponivel", 409, "CARD_LIMIT_EXCEEDED");
+  const created = await db.cardPurchase.create({ data: { userId, creditCardId: card.id, categoryId: data.categoryId, subcategoryId: data.subcategoryId || null, description: data.description, merchant: nullable(data.merchant), totalAmount: data.totalAmount, purchaseDate: asDate(data.purchaseDate), installmentsCount: data.installmentsCount, notes: nullable(data.notes) } });
+  const amounts = splitMoney(data.totalAmount, data.installmentsCount);
+  for (let index = 0; index < amounts.length; index += 1) {
+    const reference = invoiceReference(card, data.purchaseDate, index);
+    const invoice = await ensureInvoice(db, userId, card, reference, amounts[index]);
+    await db.cardInstallment.create({ data: { userId, creditCardId: card.id, purchaseId: created.id, invoiceId: invoice.id, number: index + 1, amount: amounts[index], dueDate: reference.dueDate } });
+  }
+  return created;
+}
+
+export async function cancelPurchaseInTransaction(db, userId, id) {
+  const purchase = await db.cardPurchase.findFirst({ where: { id, userId }, include: { installments: { include: { invoice: true } } } });
+  if (!purchase) throw new AppError("Compra nao encontrada", 404, "PURCHASE_NOT_FOUND");
+  if (purchase.status === "CANCELLED") return;
+  if (purchase.installments.some((item) => item.invoice.status === "PAID")) throw new AppError("Nao e possivel cancelar compra de fatura paga", 409, "PURCHASE_IN_PAID_INVOICE");
+  await db.cardPurchase.update({ where: { id }, data: { status: "CANCELLED" } });
+  for (const installment of purchase.installments) {
+    await db.cardInstallment.update({ where: { id: installment.id }, data: { status: "CANCELLED" } });
+    await db.creditCardInvoice.update({ where: { id: installment.invoiceId }, data: { totalAmount: { decrement: installment.amount } } });
+  }
+}
+
 export async function createPurchase(userId, cardId, data) {
   const purchase = await prisma.$transaction(async (db) => {
     const card = await findCard(db, userId, cardId, true);

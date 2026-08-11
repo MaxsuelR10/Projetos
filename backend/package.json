@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev && prisma generate",
+    "prisma:deploy": "prisma migrate deploy && prisma generate"
   },
   "keywords": [],
   "author": "",

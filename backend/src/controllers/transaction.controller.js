@@ -4,6 +4,7 @@ import {
   listTransactions,
   updateTransaction,
 } from "../services/transaction.service.js";
+import { deleteTransaction } from "../services/transaction.service.js";
 import { createTransfer, listTransfers, reverseTransfer } from "../services/transfer.service.js";
 
 export async function list(request, response) {
@@ -22,6 +23,11 @@ export async function update(request, response) {
 }
 
 export async function remove(request, response) {
+  await deleteTransaction(request.auth.userId, request.validated.params.id);
+  return response.status(204).send();
+}
+
+export async function cancel(request, response) {
   await cancelTransaction(request.auth.userId, request.validated.params.id);
   return response.status(204).send();
 }

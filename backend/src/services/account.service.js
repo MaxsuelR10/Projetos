@@ -6,14 +6,25 @@ function nullable(value) {
   return value?.trim() || null;
 }
 
-function serializeAccount(account) {
+function serializeAccount(account, pendingExpenses = "0") {
   const { normalizedName: _normalizedName, userId: _userId, ...publicAccount } = account;
 
   return {
     ...publicAccount,
     initialBalance: account.initialBalance.toString(),
     currentBalance: account.currentBalance.toString(),
+    projectedBalance: account.currentBalance.minus(pendingExpenses).toString(),
+    pendingCommitments: pendingExpenses.toString(),
   };
+}
+
+async function pendingByAccount(userId, accountIds) {
+  const rows = await prisma.transaction.groupBy({
+    by: ["accountId"],
+    where: { userId, accountId: { in: accountIds }, type: "EXPENSE", cardPurchaseId: null, OR: [{ status: "OVERDUE" }, { status: "PENDING", dueDate: { lte: new Date() } }] },
+    _sum: { amount: true },
+  });
+  return new Map(rows.map((row) => [row.accountId, row._sum.amount ?? 0]));
 }
 
 async function findAccount(userId, id) {
@@ -48,11 +59,14 @@ export async function listAccounts(userId, status) {
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
   });
 
-  return accounts.map(serializeAccount);
+  const commitments = await pendingByAccount(userId, accounts.map((account) => account.id));
+  return accounts.map((account) => serializeAccount(account, commitments.get(account.id) ?? "0"));
 }
 
 export async function getAccount(userId, id) {
-  return serializeAccount(await findAccount(userId, id));
+  const account = await findAccount(userId, id);
+  const commitments = await pendingByAccount(userId, [id]);
+  return serializeAccount(account, commitments.get(id) ?? "0");
 }
 
 export async function createAccount(userId, data) {

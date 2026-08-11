@@ -225,13 +225,17 @@ model Transaction {
   status        TransactionStatus @default(PENDING)
   paymentMethod PaymentMethod?
   notes         String?           @db.Text
+  creditCardId  String?           @db.Uuid
   creditCardInvoiceId String?     @db.Uuid
+  cardPurchaseId String?          @db.Uuid
   recurringTransactionId String?  @db.Uuid
   user          User              @relation(fields: [userId], references: [id], onDelete: Restrict)
   account       Account           @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
   category      Category          @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
   subcategory   Subcategory?      @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  creditCard    CreditCard?       @relation("CardTransaction", fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
   creditCardInvoice CreditCardInvoice? @relation("InvoicePayment", fields: [creditCardInvoiceId, userId], references: [id, userId], onDelete: Restrict)
+  cardPurchase  CardPurchase?     @relation("CardPurchaseTransaction", fields: [cardPurchaseId, userId], references: [id, userId], onDelete: Restrict)
   recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId, userId], references: [id, userId], onDelete: Restrict)
   createdAt     DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
@@ -241,7 +245,9 @@ model Transaction {
   @@index([accountId, date])
   @@index([categoryId, date])
   @@index([subcategoryId, date])
+  @@index([creditCardId, date])
   @@unique([creditCardInvoiceId, userId])
+  @@unique([cardPurchaseId, userId])
   @@unique([recurringTransactionId, date])
 }
 
@@ -261,6 +267,7 @@ model CreditCard {
   user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
   invoices       CreditCardInvoice[]
   purchases      CardPurchase[]
+  transactions   Transaction[]     @relation("CardTransaction")
   installments   CardInstallment[]
   subscriptions  Subscription[]
   createdAt      DateTime            @default(now()) @db.Timestamptz(3)
@@ -433,6 +440,7 @@ model CardPurchase {
   category       Category        @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
   subcategory    Subcategory?    @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
   installments   CardInstallment[]
+  transaction    Transaction?    @relation("CardPurchaseTransaction")
   createdAt      DateTime        @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
 

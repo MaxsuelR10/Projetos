@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { EmptyState } from '../components/feedback/EmptyState.jsx'
 import { useAuth } from '../hooks/useAuth.js'
 import { accountService } from '../services/account.service.js'
-import { formatAccountType, formatCurrency } from '../utils/formatters.js'
+import { formatAccountType, formatCurrency, parseCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
+import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 
 const accountTypes = [
   ['CHECKING', 'Conta corrente'],
@@ -112,6 +113,7 @@ export function AccountsPage() {
       } else {
         await accountService.create({
           ...form,
+          initialBalance: parseCurrency(form.initialBalance),
           institution: form.institution || null,
           icon: form.icon || null,
         })
@@ -146,7 +148,7 @@ export function AccountsPage() {
   }
 
   const activeAccounts = accounts.filter((account) => account.isActive)
-  const totalBalance = activeAccounts.reduce((sum, account) => sum + Number(account.currentBalance), 0)
+  const totalBalance = activeAccounts.reduce((sum, account) => sum + Number(account.projectedBalance ?? account.currentBalance), 0)
 
   return (
     <section className="page-stack">
@@ -162,7 +164,7 @@ export function AccountsPage() {
       <section className="balance-banner">
         <span>Saldo disponível</span>
         <strong>{formatCurrency(totalBalance, user.currency)}</strong>
-        <small>Somente contas ativas</small>
+        <small>Saldo projetado das contas ativas</small>
       </section>
 
       {error ? <div className="form-alert" role="alert">{error}</div> : null}
@@ -183,7 +185,7 @@ export function AccountsPage() {
             {editingAccount ? (
               <label className="form-field"><span>Saldo atual</span><input value={formatCurrency(editingAccount.currentBalance, user.currency)} disabled /><small>O saldo será alterado apenas por movimentações financeiras.</small></label>
             ) : (
-              <label className="form-field"><span>Saldo inicial</span><input name="initialBalance" value={form.initialBalance} onChange={updateForm} inputMode="decimal" pattern="-?\d+(\.\d{1,4})?" required /><small>Use ponto para centavos, por exemplo: 1250.50</small></label>
+              <label className="form-field"><span>Saldo inicial</span><CurrencyInput name="initialBalance" value={form.initialBalance} onChange={updateForm} required /></label>
             )}
             <label className="form-field color-field"><span>Cor</span><input name="color" value={form.color} onChange={updateForm} type="color" /></label>
             <label className="form-field"><span>Ícone ou apelido visual</span><input name="icon" value={form.icon} onChange={updateForm} maxLength="60" placeholder="Ex.: 💳 ou carteira" /></label>
@@ -206,7 +208,8 @@ export function AccountsPage() {
                 {!account.isActive ? <span className="status-tag">Inativa</span> : null}
               </div>
               <strong>{formatCurrency(account.currentBalance, user.currency)}</strong>
-              <small>Saldo inicial: {formatCurrency(account.initialBalance, user.currency)}</small>
+              <small className={Number(account.projectedBalance ?? account.currentBalance) < 0 ? 'expense-text' : ''}>Disponível projetado: {formatCurrency(account.projectedBalance ?? account.currentBalance, user.currency)}</small>
+              {Number(account.pendingCommitments) > 0 ? <small>Compromissos pendentes: {formatCurrency(account.pendingCommitments, user.currency)}</small> : <small>Saldo inicial: {formatCurrency(account.initialBalance, user.currency)}</small>}
               <div className="card-actions">
                 <button type="button" onClick={() => openEdit(account)}>Editar</button>
                 <button type="button" onClick={() => toggleStatus(account)}>{account.isActive ? 'Desativar' : 'Ativar'}</button>
