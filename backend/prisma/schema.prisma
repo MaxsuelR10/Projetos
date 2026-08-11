@@ -82,6 +82,12 @@ enum RecurrenceStatus {
   COMPLETED
 }
 
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   name         String        @db.VarChar(120)
@@ -99,6 +105,8 @@ model User {
   cardInstallments CardInstallment[]
   recurringTransactions RecurringTransaction[]
   subscriptions Subscription[]
+  budgets Budget[]
+  financialGoals FinancialGoal[]
   createdAt    DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
 }
@@ -121,6 +129,7 @@ model Account {
   incomingTransfers Transfer[]    @relation("IncomingTransfer")
   recurringTransactions RecurringTransaction[]
   subscriptions Subscription[]
+  financialGoals FinancialGoal[]
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -146,6 +155,7 @@ model Category {
   cardPurchases  CardPurchase[]
   recurringTransactions RecurringTransaction[]
   subscriptions Subscription[]
+  budgets Budget[]
   createdAt      DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -293,6 +303,40 @@ model Subscription {
   @@unique([userId, normalizedName])
   @@unique([id, userId])
   @@index([userId, isActive, nextBillingDate])
+}
+
+model Budget {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  categoryId String @db.Uuid
+  year Int
+  month Int
+  limitAmount Decimal @db.Decimal(19,4)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category Category @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([userId, categoryId, year, month])
+  @@index([userId, year, month])
+}
+
+model FinancialGoal {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  accountId String? @db.Uuid
+  name String @db.VarChar(120)
+  normalizedName String @db.VarChar(120)
+  targetAmount Decimal @db.Decimal(19,4)
+  currentAmount Decimal @default(0) @db.Decimal(19,4)
+  deadline DateTime? @db.Date
+  notes String? @db.Text
+  status GoalStatus @default(ACTIVE)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account Account? @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([userId, normalizedName])
+  @@index([userId, status])
 }
 
 model CreditCardInvoice {
