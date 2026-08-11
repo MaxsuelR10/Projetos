@@ -46,6 +46,28 @@ enum PaymentMethod {
   OTHER
 }
 
+enum CardType {
+  CREDIT
+  DEBIT
+}
+
+enum InvoiceStatus {
+  OPEN
+  CLOSED
+  PAID
+}
+
+enum PurchaseStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
 model User {
   id           String        @id @default(uuid()) @db.Uuid
   name         String        @db.VarChar(120)
@@ -57,6 +79,10 @@ model User {
   subcategories Subcategory[]
   transactions Transaction[]
   transfers    Transfer[]
+  creditCards  CreditCard[]
+  cardInvoices CreditCardInvoice[]
+  cardPurchases CardPurchase[]
+  cardInstallments CardInstallment[]
   createdAt    DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
 }
@@ -99,6 +125,7 @@ model Category {
   user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
   transactions   Transaction[]
   subcategories  Subcategory[]
+  cardPurchases  CardPurchase[]
   createdAt      DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -119,6 +146,7 @@ model Subcategory {
   user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   category       Category @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
   transactions   Transaction[]
+  cardPurchases  CardPurchase[]
   createdAt      DateTime @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
@@ -142,10 +170,12 @@ model Transaction {
   status        TransactionStatus @default(PENDING)
   paymentMethod PaymentMethod?
   notes         String?           @db.Text
+  creditCardInvoiceId String?     @db.Uuid
   user          User              @relation(fields: [userId], references: [id], onDelete: Restrict)
   account       Account           @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
   category      Category          @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
   subcategory   Subcategory?      @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  creditCardInvoice CreditCardInvoice? @relation("InvoicePayment", fields: [creditCardInvoiceId, userId], references: [id, userId], onDelete: Restrict)
   createdAt     DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
 
@@ -154,6 +184,103 @@ model Transaction {
   @@index([accountId, date])
   @@index([categoryId, date])
   @@index([subcategoryId, date])
+  @@unique([creditCardInvoiceId, userId])
+}
+
+model CreditCard {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @db.Uuid
+  name           String              @db.VarChar(100)
+  normalizedName String              @db.VarChar(100)
+  institution    String?             @db.VarChar(120)
+  brand          String?             @db.VarChar(60)
+  type           CardType
+  creditLimit    Decimal             @default(0) @db.Decimal(19, 4)
+  closingDay     Int?
+  dueDay         Int?
+  color          String?             @db.VarChar(20)
+  isActive       Boolean             @default(true)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  invoices       CreditCardInvoice[]
+  purchases      CardPurchase[]
+  installments   CardInstallment[]
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, normalizedName])
+  @@unique([id, userId])
+  @@index([userId, isActive])
+}
+
+model CreditCardInvoice {
+  id                String         @id @default(uuid()) @db.Uuid
+  userId            String         @db.Uuid
+  creditCardId      String         @db.Uuid
+  referenceYear     Int
+  referenceMonth    Int
+  closingDate       DateTime       @db.Date
+  dueDate           DateTime       @db.Date
+  totalAmount       Decimal        @default(0) @db.Decimal(19, 4)
+  status            InvoiceStatus  @default(OPEN)
+  paidAt            DateTime?      @db.Timestamptz(3)
+  user              User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditCard        CreditCard     @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  installments      CardInstallment[]
+  paymentTransaction Transaction?  @relation("InvoicePayment")
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@unique([creditCardId, referenceYear, referenceMonth])
+  @@unique([id, userId])
+  @@index([userId, status, dueDate])
+}
+
+model CardPurchase {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  creditCardId   String          @db.Uuid
+  categoryId     String          @db.Uuid
+  subcategoryId  String?         @db.Uuid
+  description    String          @db.VarChar(180)
+  merchant       String?         @db.VarChar(180)
+  totalAmount    Decimal         @db.Decimal(19, 4)
+  purchaseDate   DateTime        @db.Date
+  installmentsCount Int          @default(1)
+  notes          String?         @db.Text
+  status         PurchaseStatus  @default(ACTIVE)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditCard     CreditCard      @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  category       Category        @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  subcategory    Subcategory?    @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  installments   CardInstallment[]
+  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@unique([id, userId])
+  @@index([userId, creditCardId, purchaseDate])
+  @@index([categoryId, purchaseDate])
+}
+
+model CardInstallment {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @db.Uuid
+  creditCardId   String            @db.Uuid
+  purchaseId     String            @db.Uuid
+  invoiceId      String            @db.Uuid
+  number         Int
+  amount         Decimal           @db.Decimal(19, 4)
+  dueDate        DateTime          @db.Date
+  status         InstallmentStatus @default(PENDING)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditCard     CreditCard        @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  purchase       CardPurchase      @relation(fields: [purchaseId, userId], references: [id, userId], onDelete: Restrict)
+  invoice        CreditCardInvoice @relation(fields: [invoiceId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@unique([purchaseId, number])
+  @@index([invoiceId, status])
+  @@index([creditCardId, status])
 }
 
 model Transfer {

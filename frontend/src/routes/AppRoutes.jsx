@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthLayout } from '../layouts/AuthLayout.jsx'
 import { AccountsPage } from '../pages/AccountsPage.jsx'
 import { CategoriesPage } from '../pages/CategoriesPage.jsx'
+import { CardsPage } from '../pages/CardsPage.jsx'
 import { HomePage } from '../pages/HomePage.jsx'
 import { TransactionsPage } from '../pages/TransactionsPage.jsx'
 import { LoginPage } from '../pages/auth/LoginPage.jsx'
@@ -25,6 +26,7 @@ export function AppRoutes() {
           <Route index element={<HomePage />} />
           <Route path="/contas" element={<AccountsPage />} />
           <Route path="/categorias" element={<CategoriesPage />} />
+          <Route path="/cartoes" element={<CardsPage />} />
           <Route path="/movimentacoes" element={<TransactionsPage />} />
         </Route>
       </Route>

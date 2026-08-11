@@ -6,6 +6,7 @@ const navigation = [
   { to: '/contas', label: 'Contas', symbol: '◫' },
   { to: '/categorias', label: 'Categorias', symbol: '◇' },
   { to: '/movimentacoes', label: 'Movimentos', symbol: '↕' },
+  { to: '/cartoes', label: 'Cartões', symbol: '▣' },
 ]
 
 export function AppLayout() {

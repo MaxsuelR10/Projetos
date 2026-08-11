@@ -26,6 +26,17 @@ A Fase 2 adiciona:
 
 Receitas, despesas, transferências e o dashboard pertencem às fases posteriores.
 
+## Fases 3 e 4
+
+A Fase 3 adiciona receitas, despesas e transferências com atualização atômica
+dos saldos. Lançamentos pendentes não afetam a conta até serem concluídos;
+cancelamentos revertem o efeito financeiro.
+
+A Fase 4 adiciona cartões de crédito e débito, limite e vencimento, compras em
+até 120 parcelas, faturas por competência e pagamento de fatura vinculado a
+uma conta. A compra não reduz saldo: apenas o pagamento gera a transação e
+altera a conta, dentro da mesma transação do PostgreSQL.
+
 ## Tecnologias
 
 ### Frontend
@@ -114,6 +125,17 @@ O frontend usa `http://localhost:3000/api` por padrão. Para alterar, copie
 | `PATCH`, `DELETE` | `/api/categories/:id` | Sim | Edita, desativa ou exclui categoria personalizada sem vínculos |
 | `POST` | `/api/categories/:categoryId/subcategories` | Sim | Cria subcategoria |
 | `PATCH`, `DELETE` | `/api/categories/:categoryId/subcategories/:id` | Sim | Edita, desativa ou exclui subcategoria sem vínculos |
+
+| `GET`, `POST` | `/api/transactions` | Sim | Lista e cria receitas/despesas |
+| `PATCH`, `DELETE` | `/api/transactions/:id` | Sim | Edita ou cancela lançamento |
+| `GET`, `POST` | `/api/transfers` | Sim | Consulta e cria transferências idempotentes |
+| `DELETE` | `/api/transfers/:id` | Sim | Estorna transferência preservando histórico |
+| `GET`, `POST` | `/api/cards` | Sim | Lista e cadastra cartões |
+| `GET`, `PATCH`, `DELETE` | `/api/cards/:id` | Sim | Consulta, edita ou remove cartão sem compras |
+| `GET`, `POST` | `/api/cards/:id/purchases` | Sim | Consulta e cria compras parceladas no crédito |
+| `GET` | `/api/cards/:id/invoices` | Sim | Lista faturas e parcelas do cartão |
+| `POST` | `/api/invoices/:id/pay` | Sim | Paga fatura usando uma conta ativa |
+| `PATCH`, `DELETE` | `/api/card-purchases/:id` | Sim | Edita metadados ou cancela compra futura |
 
 O backend nunca aceita `userId` do frontend como autoridade. Rotas financeiras
 futuras deverão usar exclusivamente o identificador obtido pelo middleware JWT.
