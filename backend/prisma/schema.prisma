@@ -87,6 +87,28 @@ enum GoalStatus {
   COMPLETED
   ARCHIVED
 }
+enum InvestmentType {
+  CDB
+  TESOURO
+  LCI
+  LCA
+  STOCK
+  ETF
+  FII
+  FUND
+  CRYPTO
+  SAVINGS
+  FIXED_INCOME
+  OTHER
+}
+enum YieldType {
+  CDI_PERCENT
+  SELIC
+  IPCA
+  ANNUAL_RATE
+  MONTHLY_RATE
+  CUSTOM
+}
 
 model User {
   id           String        @id @default(uuid()) @db.Uuid
@@ -107,6 +129,7 @@ model User {
   subscriptions Subscription[]
   budgets Budget[]
   financialGoals FinancialGoal[]
+  investments Investment[]
   createdAt    DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
 }
@@ -130,6 +153,7 @@ model Account {
   recurringTransactions RecurringTransaction[]
   subscriptions Subscription[]
   financialGoals FinancialGoal[]
+  investments Investment[]
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
 
@@ -337,6 +361,35 @@ model FinancialGoal {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
   @@unique([userId, normalizedName])
   @@index([userId, status])
+}
+
+model Investment {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  accountId String? @db.Uuid
+  name String @db.VarChar(120)
+  normalizedName String @db.VarChar(120)
+  institution String? @db.VarChar(120)
+  type InvestmentType
+  investedAmount Decimal @db.Decimal(19,4)
+  currentAmount Decimal @db.Decimal(19,4)
+  quantity Decimal? @db.Decimal(19,4)
+  averagePrice Decimal? @db.Decimal(19,4)
+  applicationDate DateTime @db.Date
+  maturityDate DateTime? @db.Date
+  liquidity String? @db.VarChar(120)
+  yieldType YieldType @default(CUSTOM)
+  referenceIndex String? @db.VarChar(60)
+  indexPercentage Decimal? @db.Decimal(10,4)
+  manualRate Decimal? @db.Decimal(10,4)
+  notes String? @db.Text
+  isActive Boolean @default(true)
+  user User @relation(fields:[userId], references:[id], onDelete: Restrict)
+  account Account? @relation(fields:[accountId,userId], references:[id,userId], onDelete: Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([userId,normalizedName])
+  @@index([userId,type,isActive])
 }
 
 model CreditCardInvoice {
