@@ -1,0 +1,180 @@
+generator client {
+  // The project is JavaScript-only. The new `prisma-client` generator emits
+  // TypeScript source, so this generator keeps runtime transpilation unnecessary.
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountType {
+  CHECKING
+  DIGITAL
+  SAVINGS
+  CASH
+  WALLET
+  INVESTMENT
+  OTHER
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  BOLETO
+  CASH
+  BANK_TRANSFER
+  AUTOMATIC_DEBIT
+  OTHER
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  name         String        @db.VarChar(120)
+  email        String        @unique @db.VarChar(255)
+  passwordHash String        @db.VarChar(255)
+  currency     String        @default("BRL") @db.VarChar(3)
+  accounts     Account[]
+  categories   Category[]
+  subcategories Subcategory[]
+  transactions Transaction[]
+  transfers    Transfer[]
+  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
+}
+
+model Account {
+  id                String        @id @default(uuid()) @db.Uuid
+  userId            String        @db.Uuid
+  name              String        @db.VarChar(100)
+  normalizedName    String        @db.VarChar(100)
+  institution       String?       @db.VarChar(120)
+  type              AccountType
+  initialBalance    Decimal       @default(0) @db.Decimal(19, 4)
+  currentBalance    Decimal       @default(0) @db.Decimal(19, 4)
+  color             String?       @db.VarChar(20)
+  icon              String?       @db.VarChar(60)
+  isActive          Boolean       @default(true)
+  user              User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions      Transaction[]
+  outgoingTransfers Transfer[]    @relation("OutgoingTransfer")
+  incomingTransfers Transfer[]    @relation("IncomingTransfer")
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, name])
+  @@unique([userId, normalizedName])
+  @@unique([id, userId])
+  @@index([userId, isActive])
+}
+
+model Category {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @db.Uuid
+  name           String        @db.VarChar(100)
+  normalizedName String        @db.VarChar(100)
+  type           CategoryType
+  color          String?       @db.VarChar(20)
+  icon           String?       @db.VarChar(60)
+  isDefault      Boolean       @default(false)
+  isActive       Boolean       @default(true)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions   Transaction[]
+  subcategories  Subcategory[]
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, type, normalizedName])
+  @@unique([id, userId])
+  @@index([userId, type, isActive])
+}
+
+model Subcategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  categoryId     String   @db.Uuid
+  name           String   @db.VarChar(100)
+  normalizedName String   @db.VarChar(100)
+  color          String?  @db.VarChar(20)
+  icon           String?  @db.VarChar(60)
+  isActive       Boolean  @default(true)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category       Category @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  transactions   Transaction[]
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([categoryId, normalizedName])
+  @@unique([id, userId])
+  @@index([userId, categoryId, isActive])
+}
+
+model Transaction {
+  id            String            @id @default(uuid()) @db.Uuid
+  userId        String            @db.Uuid
+  accountId     String            @db.Uuid
+  categoryId    String            @db.Uuid
+  subcategoryId String?           @db.Uuid
+  type          TransactionType
+  description   String            @db.VarChar(180)
+  amount        Decimal           @db.Decimal(19, 4)
+  date          DateTime          @db.Date
+  dueDate       DateTime?         @db.Date
+  settledAt     DateTime?         @db.Timestamptz(3)
+  status        TransactionStatus @default(PENDING)
+  paymentMethod PaymentMethod?
+  notes         String?           @db.Text
+  user          User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account       Account           @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  category      Category          @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  subcategory   Subcategory?      @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, date])
+  @@index([userId, status, dueDate])
+  @@index([accountId, date])
+  @@index([categoryId, date])
+  @@index([subcategoryId, date])
+}
+
+model Transfer {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  fromAccountId String   @db.Uuid
+  toAccountId   String   @db.Uuid
+  amount        Decimal  @db.Decimal(19, 4)
+  date          DateTime @db.Date
+  description   String?  @db.VarChar(180)
+  idempotencyKey String? @db.VarChar(100)
+  isReversed    Boolean  @default(false)
+  reversedAt    DateTime? @db.Timestamptz(3)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  fromAccount   Account  @relation("OutgoingTransfer", fields: [fromAccountId, userId], references: [id, userId], onDelete: Restrict)
+  toAccount     Account  @relation("IncomingTransfer", fields: [toAccountId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, date])
+  @@index([fromAccountId, date])
+  @@index([toAccountId, date])
+  @@unique([userId, idempotencyKey])
+}

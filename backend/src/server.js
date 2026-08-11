@@ -1,20 +1,19 @@
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config();
+import { app } from "./app.js";
+import { env } from "./config/env.js";
+import { prisma } from "./config/database.js";
 
-const app = express();
+const server = app.listen(env.PORT, () => {
+  console.log(`API disponível em http://localhost:${env.PORT}`);
+});
 
-app.use(cors());
-app.use(express.json());
+async function shutdown(signal) {
+  console.log(`${signal} recebido. Encerrando a API...`);
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "API do Controle de Finanças funcionando!",
+  server.close(async () => {
+    await prisma.$disconnect();
+    process.exit(0);
   });
-});
+}
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

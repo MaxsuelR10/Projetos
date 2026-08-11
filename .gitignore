@@ -8,6 +8,8 @@ backend/node_modules/
 .env.*
 backend/.env
 frontend/.env
+!.env.example
+!**/.env.example
 
 # Builds
 dist/
