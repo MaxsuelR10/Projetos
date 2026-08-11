@@ -1,67 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { accountService } from '../services/account.service.js'
-import { categoryService } from '../services/category.service.js'
+import { dashboardService } from '../services/dashboard.service.js'
 import { formatCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { useAuth } from '../hooks/useAuth.js'
 
 export function HomePage() {
-  const { user } = useAuth()
-  const [summary, setSummary] = useState({ isLoading: true, error: '', accounts: [], categories: [] })
-
-  useEffect(() => {
-    let active = true
-
-    Promise.all([accountService.list('active'), categoryService.list('active')])
-      .then(([accounts, categories]) => {
-        if (active) setSummary({ isLoading: false, error: '', accounts, categories })
-      })
-      .catch((error) => {
-        if (active) setSummary((current) => ({ ...current, isLoading: false, error: getApiError(error) }))
-      })
-
-    return () => { active = false }
-  }, [])
-
-  const balance = summary.accounts.reduce((total, account) => total + Number(account.currentBalance), 0)
-
-  return (
-    <section className="page-stack">
-      <div className="page-heading welcome-heading">
-        <div>
-          <p className="eyebrow">Visão geral</p>
-          <h1>Olá, {user.name.split(' ')[0]}.</h1>
-          <p>Comece registrando suas contas e ajustando suas categorias.</p>
-        </div>
-      </div>
-
-      {summary.error ? <div className="form-alert" role="alert">{summary.error}</div> : null}
-
-      <section className="overview-grid" aria-label="Resumo inicial">
-        <article className="overview-card overview-card-primary">
-          <span>Saldo nas contas</span>
-          <strong>{summary.isLoading ? '...' : formatCurrency(balance, user.currency)}</strong>
-          <small>{summary.accounts.length} conta{summary.accounts.length === 1 ? '' : 's'} ativa{summary.accounts.length === 1 ? '' : 's'}</small>
-        </article>
-        <article className="overview-card">
-          <span>Categorias ativas</span>
-          <strong>{summary.isLoading ? '...' : summary.categories.length}</strong>
-          <small>Receitas e despesas organizadas</small>
-        </article>
-      </section>
-
-      <section className="setup-card">
-        <div>
-          <p className="eyebrow">Fase 2</p>
-          <h2>Base financeira pronta para configurar.</h2>
-          <p>Cadastre as contas que você usa e personalize as categorias da família antes de lançar movimentações.</p>
-        </div>
-        <div className="setup-actions">
-          <Link className="primary-button inline-button" to="/movimentacoes">Novo lançamento</Link>
-          <Link className="secondary-button inline-button" to="/categorias">Ver categorias</Link>
-        </div>
-      </section>
-    </section>
-  )
+  const { user } = useAuth(); const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); const [state, setState] = useState({ loading: true, error: '', data: null })
+  useEffect(() => { let active = true; dashboardService.get(month).then((data) => active && setState({ loading: false, error: '', data })).catch((error) => active && setState({ loading: false, error: getApiError(error), data: null })); return () => { active = false } }, [month])
+  const data = state.data; const max = data ? Math.max(...data.monthlySeries.flatMap((item) => [Number(item.income), Number(item.expense)]), 1) : 1
+  return <section className="page-stack"><div className="page-heading with-action"><div><p className="eyebrow">Fase 6 · Visão geral</p><h1>Olá, {user.name.split(' ')[0]}.</h1><p>Seu resumo financeiro atualizado.</p></div><label className="month-picker"><span>Período</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label></div>{state.error ? <div className="form-alert">{state.error}</div> : null}{state.loading ? <p className="loading-inline">Carregando painel...</p> : null}{data ? <><section className="overview-grid"><article className="overview-card overview-card-primary"><span>Saldo disponível</span><strong>{formatCurrency(data.summary.availableBalance, user.currency)}</strong><small>Patrimônio nas contas</small></article><article className="overview-card"><span>Resultado mensal</span><strong>{formatCurrency(data.summary.monthlyResult, user.currency)}</strong><small>Receitas menos despesas</small></article></section><section className="metric-grid"><article><span>Receitas</span><strong className="income-text">{formatCurrency(data.summary.monthlyIncome, user.currency)}</strong></article><article><span>Despesas</span><strong className="expense-text">{formatCurrency(data.summary.monthlyExpense, user.currency)}</strong></article><article><span>A pagar</span><strong>{formatCurrency(data.summary.pendingBills, user.currency)}</strong></article><article><span>Cartões</span><strong>{formatCurrency(data.summary.totalCardUsed, user.currency)}</strong></article></section><section className="dashboard-panel"><p className="eyebrow">Fluxo</p><h2>Receitas x despesas</h2><div className="bar-chart">{data.monthlySeries.map((item) => <div className="bar-group" key={item.label}><div className="bars"><i className="bar-income" style={{ height: `${Number(item.income) / max * 100}%` }} /><i className="bar-expense" style={{ height: `${Number(item.expense) / max * 100}%` }} /></div><small>{item.label}</small></div>)}</div></section><section className="setup-card"><div><p className="eyebrow">Ações rápidas</p><h2>Organize o próximo lançamento.</h2></div><div className="setup-actions"><Link className="primary-button inline-button" to="/movimentacoes">Novo lançamento</Link><Link className="secondary-button inline-button" to="/cartoes">Ver cartões</Link></div></section></> : null}</section>
 }
