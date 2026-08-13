@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.js'
 
@@ -14,6 +15,26 @@ const navigation = [
 
 export function AppLayout() {
   const { user, logout } = useAuth()
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return undefined
+
+    function syncKeyboardState() {
+      const keyboardIsOpen = window.innerHeight - viewport.height > 160
+      document.documentElement.classList.toggle('keyboard-open', keyboardIsOpen)
+    }
+
+    viewport.addEventListener('resize', syncKeyboardState)
+    viewport.addEventListener('scroll', syncKeyboardState)
+    syncKeyboardState()
+
+    return () => {
+      viewport.removeEventListener('resize', syncKeyboardState)
+      viewport.removeEventListener('scroll', syncKeyboardState)
+      document.documentElement.classList.remove('keyboard-open')
+    }
+  }, [])
 
   return (
     <div className="app-shell">
