@@ -130,6 +130,7 @@ model User {
   budgets Budget[]
   financialGoals FinancialGoal[]
   investments Investment[]
+  investmentContributions InvestmentContribution[]
   createdAt    DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
 }
@@ -355,6 +356,7 @@ model FinancialGoal {
   id String @id @default(uuid()) @db.Uuid
   userId String @db.Uuid
   accountId String? @db.Uuid
+  investmentId String? @unique @db.Uuid
   name String @db.VarChar(120)
   normalizedName String @db.VarChar(120)
   targetAmount Decimal @db.Decimal(19,4)
@@ -364,9 +366,11 @@ model FinancialGoal {
   status GoalStatus @default(ACTIVE)
   user User @relation(fields: [userId], references: [id], onDelete: Restrict)
   account Account? @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  investment Investment? @relation("InvestmentGoal", fields: [investmentId, userId], references: [id, userId], onDelete: Restrict)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
   @@unique([userId, normalizedName])
+  @@unique([investmentId, userId])
   @@index([userId, status])
 }
 
@@ -380,6 +384,7 @@ model Investment {
   type InvestmentType
   investedAmount Decimal @db.Decimal(19,4)
   currentAmount Decimal @db.Decimal(19,4)
+  manualEarnings Decimal @default(0) @db.Decimal(19,4)
   quantity Decimal? @db.Decimal(19,4)
   averagePrice Decimal? @db.Decimal(19,4)
   applicationDate DateTime @db.Date
@@ -393,10 +398,42 @@ model Investment {
   isActive Boolean @default(true)
   user User @relation(fields:[userId], references:[id], onDelete: Restrict)
   account Account? @relation(fields:[accountId,userId], references:[id,userId], onDelete: Restrict)
+  goal FinancialGoal? @relation("InvestmentGoal")
+  contributions InvestmentContribution[]
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
   @@unique([userId,normalizedName])
+  @@unique([id,userId])
   @@index([userId,type,isActive])
+}
+
+model InvestmentContribution {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  investmentId String @db.Uuid
+    amount Decimal @db.Decimal(19,4)
+    date DateTime @db.Date
+    yieldStartDate DateTime @db.Date
+    notes String? @db.Text
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  investment Investment @relation(fields: [investmentId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, investmentId, date])
+  @@unique([id, userId])
+}
+
+model FinancialIndex {
+  code String @id @db.VarChar(20)
+  rate Decimal @db.Decimal(10,6)
+  period String @db.VarChar(20)
+  source String @db.VarChar(255)
+  referenceDate DateTime @db.Date
+  fetchedAt DateTime @default(now()) @db.Timestamptz(3)
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
 model CreditCardInvoice {

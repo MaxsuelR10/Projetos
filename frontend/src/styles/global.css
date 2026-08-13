@@ -551,6 +551,32 @@ button:disabled {
 .balance-banner strong { font-size: clamp(1.85rem, 8vw, 2.7rem); letter-spacing: -0.04em; }
 
 .overview-grid { display: grid; gap: 0.8rem; }
+.investment-overview .overview-card { min-height: 7.6rem; }
+.index-status-card, .legacy-goals-card, .investment-card { display: grid; gap: 0.9rem; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); }
+.index-status-card { align-items: center; }
+.index-status-card p, .legacy-goals-card p { margin: 0; }
+.index-status-card strong { display: block; margin-top: 0.3rem; font-size: 0.95rem; }
+.index-status-card small, .legacy-goals-card small { display: block; margin-top: 0.35rem; color: var(--color-muted); }
+.investment-list { display: grid; gap: 0.85rem; }
+.investment-card-header { display: grid; gap: 0.7rem; }
+.investment-card-header h2 { margin: 0.55rem 0 0.25rem; font-size: 1.2rem; }
+.investment-card-header p { margin: 0; color: var(--color-muted); font-size: 0.85rem; }
+.investment-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+.investment-values div { padding: 0.7rem; border-radius: var(--radius-sm); background: var(--color-canvas); }
+.investment-values span { display: block; color: var(--color-muted); font-size: 0.68rem; font-weight: 800; }
+.investment-values strong { display: block; margin-top: 0.3rem; font-size: clamp(0.85rem, 3.5vw, 1.1rem); }
+.goal-progress { display: grid; gap: 0.55rem; padding: 0.85rem; border: 1px solid #a8dcc4; border-radius: var(--radius-sm); background: var(--color-brand-soft); }
+.goal-progress.is-achieved { border-color: var(--color-brand); background: #d9f4e6; }
+.goal-progress > div:first-child { display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline; }
+.goal-progress span, .goal-progress small { color: var(--color-muted); font-size: 0.8rem; }
+.progress-track { height: 0.65rem; overflow: hidden; border-radius: 999px; background: #c6e7d5; }
+.progress-track > span { display: block; height: 100%; border-radius: inherit; background: var(--color-brand); }
+.contribution-history { border-top: 1px solid var(--color-line); padding-top: 0.85rem; }
+.contribution-history summary { cursor: pointer; color: var(--color-ink); font-weight: 800; }
+.contribution-row, .legacy-goal-row { display: grid; gap: 0.5rem; align-items: center; padding: 0.65rem 0; border-bottom: 1px solid var(--color-line); }
+.contribution-row:last-child, .legacy-goal-row:last-child { border-bottom: 0; }
+.contribution-row span { color: var(--color-muted); font-size: 0.8rem; }
+.legacy-goal-row select { min-width: 0; }
 .month-picker { display: grid; gap: 0.25rem; color: var(--color-muted); font-size: 0.72rem; font-weight: 800; }
 .month-picker input { min-height: 2.6rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
 .metric-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.7rem; }
@@ -601,6 +627,10 @@ button:disabled {
 
 .transaction-mode { grid-template-columns: 1fr 1fr; }
 .compact-segmented { align-self: end; }
+.form-actions { display: flex; flex-wrap: wrap; gap: 0.7rem; align-items: stretch; }
+.entity-form .form-actions { grid-column: 1 / -1; }
+.entity-form .form-actions .primary-button { width: auto; flex: 1 1 12rem; }
+.form-actions .secondary-button { flex: 1 1 10rem; min-height: 3rem; padding: 0.65rem 1rem; }
 .form-field-wide { grid-column: 1 / -1; }
 
 .card-selector { display: grid; gap: 0.8rem; grid-auto-flow: column; grid-auto-columns: minmax(15rem, 85%); overflow-x: auto; padding: 0.15rem 0.1rem 0.55rem; }
@@ -792,6 +822,11 @@ button:disabled {
   .entity-form { grid-template-columns: repeat(2, 1fr); }
   .entity-form .primary-button { grid-column: 1 / -1; width: auto; justify-self: start; padding: 0 1.4rem; }
   .compact-segmented { grid-column: 1 / -1; max-width: 22rem; }
+  .investment-overview { grid-template-columns: repeat(3, 1fr); }
+  .index-status-card { grid-template-columns: minmax(0, 1fr) auto; }
+  .investment-card-header { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .contribution-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .legacy-goal-row { grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem) auto; }
   .compact-form { grid-template-columns: repeat(2, 1fr); }
   .subcategory-row { grid-template-columns: 1.2rem minmax(0, 1fr) auto auto; }
   .subcategory-row > div { grid-column: auto; }

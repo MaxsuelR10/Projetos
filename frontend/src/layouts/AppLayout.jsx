@@ -7,8 +7,8 @@ const navigation = [
   { to: '/categorias', label: 'Categorias', symbol: '◇' },
   { to: '/movimentacoes', label: 'Movimentos', symbol: '↕' },
   { to: '/cartoes', label: 'Cartões', symbol: '▣' },
-  { to: '/recorrencias', label: 'Planejar', symbol: '↻' },
-  { to: '/planejamento', label: 'Metas', symbol: '◎' },
+  { to: '/recorrencias', label: 'Recorrências', symbol: '↻' },
+  { to: '/planejamento', label: 'Planejar', symbol: '◎' },
   { to: '/investimentos', label: 'Investir', symbol: '↗' },
 ]
 
