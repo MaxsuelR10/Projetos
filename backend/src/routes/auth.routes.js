@@ -1,7 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { login, logout, me, register } from "../controllers/auth.controller.js";
-import { requireAuth } from "../middlewares/auth.middleware.js";
+import { optionalAuth, requireAuth } from "../middlewares/auth.middleware.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { loginSchema, registerSchema } from "../validators/auth.schemas.js";
@@ -23,5 +23,5 @@ const authLimiter = rateLimit({
 
 authRouter.post("/register", authLimiter, validate(registerSchema), asyncHandler(register));
 authRouter.post("/login", authLimiter, validate(loginSchema), asyncHandler(login));
-authRouter.get("/me", requireAuth, asyncHandler(me));
+authRouter.get("/me", optionalAuth, asyncHandler(me));
 authRouter.post("/logout", requireAuth, logout);
