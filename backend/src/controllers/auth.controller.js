@@ -30,8 +30,21 @@ export async function login(request, response) {
 }
 
 export async function me(request, response) {
-  const user = await getUserById(request.auth.userId);
-  return response.status(200).json({ user });
+  if (!request.auth) {
+    return response.status(200).json({ authenticated: false, user: null });
+  }
+
+  try {
+    const user = await getUserById(request.auth.userId);
+    return response.status(200).json({ authenticated: true, user });
+  } catch (error) {
+    if (error?.code === "INVALID_SESSION") {
+      response.clearCookie(AUTH_COOKIE_NAME, clearAuthCookieOptions());
+      return response.status(200).json({ authenticated: false, user: null });
+    }
+
+    throw error;
+  }
 }
 
 export function logout(_request, response) {

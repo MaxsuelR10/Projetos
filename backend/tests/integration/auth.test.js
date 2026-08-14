@@ -58,11 +58,25 @@ describe.sequential("autenticação", () => {
     expect(JSON.stringify(response.body)).not.toContain("passwordHash");
   });
 
-  it("rejeita rota protegida sem token", async () => {
+  it("trata a consulta de sessÃ£o sem token como usuÃ¡rio deslogado", async () => {
     const response = await request(app).get("/api/auth/me");
 
-    expect(response.status).toBe(401);
-    expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ authenticated: false, user: null });
+
+    const protectedResponse = await request(app).get("/api/accounts");
+    expect(protectedResponse.status).toBe(401);
+    expect(protectedResponse.body.error.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("trata cookie invÃ¡lido como sessÃ£o ausente e o limpa", async () => {
+    const response = await request(app)
+      .get("/api/auth/me")
+      .set("Cookie", "controle_financas_token=token-invalido");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ authenticated: false, user: null });
+    expect(response.headers["set-cookie"]?.[0]).toContain("controle_financas_token=;");
   });
 
   it("faz login e acessa a rota protegida com cookie JWT", async () => {
@@ -75,6 +89,7 @@ describe.sequential("autenticação", () => {
     const meResponse = await agent.get("/api/auth/me");
 
     expect(meResponse.status).toBe(200);
+    expect(meResponse.body.authenticated).toBe(true);
     expect(meResponse.body.user.email).toBe(email);
     expect(meResponse.body.user).not.toHaveProperty("passwordHash");
   });
@@ -87,6 +102,7 @@ describe.sequential("autenticação", () => {
     expect(logoutResponse.status).toBe(204);
 
     const meResponse = await agent.get("/api/auth/me");
-    expect(meResponse.status).toBe(401);
+    expect(meResponse.status).toBe(200);
+    expect(meResponse.body).toEqual({ authenticated: false, user: null });
   });
 });

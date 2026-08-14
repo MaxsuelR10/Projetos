@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AUTH_COOKIE_NAME } from "../utils/auth-cookie.js";
+import { AUTH_COOKIE_NAME, clearAuthCookieOptions } from "../utils/auth-cookie.js";
 import { AppError } from "../utils/app-error.js";
 import { verifyAccessToken } from "../utils/jwt.js";
 
@@ -19,5 +19,25 @@ export function requireAuth(request, _response, next) {
     return next();
   } catch {
     return next(new AppError("Sessão inválida ou expirada", 401, "INVALID_SESSION"));
+  }
+}
+
+export function optionalAuth(request, response, next) {
+  const token = request.cookies[AUTH_COOKIE_NAME];
+
+  if (!token) {
+    request.auth = null;
+    return next();
+  }
+
+  try {
+    const payload = verifyAccessToken(token);
+    const userId = userIdSchema.parse(payload.sub);
+    request.auth = { userId };
+    return next();
+  } catch {
+    response.clearCookie(AUTH_COOKIE_NAME, clearAuthCookieOptions());
+    request.auth = null;
+    return next();
   }
 }
