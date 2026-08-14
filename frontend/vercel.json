@@ -3,6 +3,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://controle-financas-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
     }
   ]
 }
