@@ -1,9 +1,11 @@
-import { formatCurrencyInput } from '../../utils/formatters.js'
+import { formatCurrency, formatCurrencyInput } from '../../utils/formatters.js'
 
 export function CurrencyInput({ name, value, onChange, ...props }) {
   function handleChange(event) {
     onChange({ target: { name, value: formatCurrencyInput(event.target.value) } })
   }
 
-  return <input name={name} value={formatCurrencyInput(value)} onChange={handleChange} inputMode="numeric" placeholder="R$ 0,00" {...props} />
+  const rawValue = String(value ?? '')
+  const displayValue = rawValue.includes('R$') ? formatCurrencyInput(rawValue) : rawValue === '' ? '' : formatCurrency(rawValue)
+  return <input name={name} value={displayValue} onChange={handleChange} inputMode="numeric" placeholder="R$ 0,00" {...props} />
 }

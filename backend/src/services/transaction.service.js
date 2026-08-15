@@ -76,7 +76,7 @@ export async function createTransaction(userId, data) {
     const status = isCardPurchase ? "COMPLETED" : (data.status ?? "PENDING");
     const purchase = isCardPurchase ? await createPurchaseInTransaction(db, userId, data.creditCardId, {
       categoryId: data.categoryId, subcategoryId: data.subcategoryId, description: data.description,
-      totalAmount: data.amount, purchaseDate: data.date, installmentsCount: 1, notes: data.notes,
+      totalAmount: data.amount, purchaseDate: data.date, installmentsCount: data.installmentsCount ?? 1, notes: data.notes,
     }) : null;
     const created = await db.transaction.create({
       data: {

@@ -81,6 +81,17 @@ enum RecurrenceStatus {
   PAUSED
   COMPLETED
 }
+enum RecurrenceEndMode {
+  NO_END_DATE
+  END_DATE
+  DURATION
+}
+enum RecurrenceDurationUnit {
+  DAYS
+  WEEKS
+  MONTHS
+  YEARS
+}
 
 enum GoalStatus {
   ACTIVE
@@ -270,6 +281,7 @@ model CreditCard {
   transactions   Transaction[]     @relation("CardTransaction")
   installments   CardInstallment[]
   subscriptions  Subscription[]
+  recurringTransactions RecurringTransaction[]
   createdAt      DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
 
@@ -288,11 +300,16 @@ model RecurringTransaction {
   description        String              @db.VarChar(180)
   amount             Decimal             @db.Decimal(19, 4)
   paymentMethod      PaymentMethod?
+  creditCardId       String?             @db.Uuid
   notes              String?             @db.Text
   frequency          RecurrenceFrequency
   intervalDays       Int?
   startDate          DateTime            @db.Date
   endDate            DateTime?           @db.Date
+  endMode            RecurrenceEndMode   @default(NO_END_DATE)
+  durationValue      Int?
+  durationUnit       RecurrenceDurationUnit?
+  endedAt            DateTime?
   occurrencesLimit   Int?
   occurrencesGenerated Int               @default(0)
   nextOccurrenceDate DateTime            @db.Date
@@ -301,6 +318,7 @@ model RecurringTransaction {
   account            Account             @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
   category           Category            @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
   subcategory        Subcategory?        @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  creditCard         CreditCard?         @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
   transactions       Transaction[]
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @db.Timestamptz(3)

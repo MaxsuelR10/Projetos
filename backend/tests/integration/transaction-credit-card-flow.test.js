@@ -52,4 +52,19 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
     expect(invoices.body.invoices).toHaveLength(1);
     expect(invoices.body.invoices[0].totalAmount).toBe("120");
   });
+
+  it("gera parcelas pelo lançamento e considera somente a competência da fatura no dashboard", async () => {
+    const created = await agent.post("/api/transactions").send({ accountId, categoryId, type: "EXPENSE", description: "Compra parcelada", amount: "100.00", date: "2026-08-11", paymentMethod: "CREDIT_CARD", creditCardId: cardId, installmentsCount: 3 });
+    expect(created.status).toBe(201);
+
+    const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
+    const installments = invoices.body.invoices.flatMap((invoice) => invoice.installments).filter((item) => item.purchase.description === "Compra parcelada").sort((first, second) => first.number - second.number);
+    expect(installments.map((item) => item.amount)).toEqual(["33.34", "33.33", "33.33"]);
+    expect(installments.reduce((total, item) => total + Number(item.amount), 0)).toBe(100);
+
+    const september = await agent.get("/api/dashboard?month=2026-09");
+    expect(september.body.summary).toMatchObject({ monthlyExpense: "153.34", monthlyResult: "846.66" });
+    const october = await agent.get("/api/dashboard?month=2026-10");
+    expect(october.body.summary).toMatchObject({ monthlyExpense: "33.33", monthlyResult: "966.67" });
+  });
 });

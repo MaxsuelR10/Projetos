@@ -4,6 +4,7 @@ import { idSchema, paymentMethodSchema, positiveMoneySchema } from "./common.sch
 const dateSchema = z.iso.date("Informe uma data válida");
 const optionalText = (maxLength) => z.string().trim().max(maxLength).nullable().optional();
 const nonNegativeMoney = z.string().trim().regex(/^\d{1,15}(?:\.\d{1,4})?$/, "Informe um valor monetário válido");
+const cardPurchaseMoney = z.string().trim().regex(/^\d{1,15}(?:\.\d{1,2})?$/, "Informe um valor monetário com no máximo dois centavos").refine((value) => Number(value) > 0, "Informe um valor maior que zero");
 const daySchema = z.coerce.number().int().min(1).max(31);
 const colorSchema = z.string().trim().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Informe uma cor hexadecimal válida").nullable().optional();
 
@@ -42,7 +43,7 @@ export const createPurchaseSchema = z.object({
   params: z.object({ id: idSchema }),
   body: z.object({
     categoryId: idSchema, subcategoryId: idSchema.nullable().optional(), description: z.string().trim().min(2).max(180),
-    merchant: optionalText(180), totalAmount: positiveMoneySchema, purchaseDate: dateSchema,
+    merchant: optionalText(180), totalAmount: cardPurchaseMoney, purchaseDate: dateSchema,
     installmentsCount: z.coerce.number().int().min(1).max(120).default(1), notes: optionalText(5000),
   }).strict(),
 });

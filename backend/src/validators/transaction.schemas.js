@@ -23,6 +23,7 @@ const transactionFields = {
   status: transactionStatusSchema.optional(),
   paymentMethod: paymentMethodSchema.nullable().optional(),
   creditCardId: idSchema.nullable().optional(),
+  installmentsCount: z.coerce.number().int().min(1).max(120).optional(),
   notes: optionalText(5000),
 };
 
@@ -35,6 +36,7 @@ export const createTransactionSchema = z.object({
 }).superRefine(({ body }, context) => {
   if (body.paymentMethod === "CREDIT_CARD" && !body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Selecione o cartão de crédito utilizado" });
   if (body.paymentMethod === "CREDIT_CARD" && body.type !== "EXPENSE") context.addIssue({ code: "custom", path: ["body", "type"], message: "Cartão de crédito só pode ser usado em despesas" });
+  if (body.paymentMethod === "CREDIT_CARD" && !/^\d{1,15}(?:\.\d{1,2})?$/.test(body.amount)) context.addIssue({ code: "custom", path: ["body", "amount"], message: "Compras no cartão aceitam no máximo dois centavos" });
   if (body.paymentMethod !== "CREDIT_CARD" && body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Cartão informado para uma forma de pagamento diferente" });
 });
 
