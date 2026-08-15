@@ -784,6 +784,18 @@ button:disabled {
 .mobile-nav a > span:first-child { font-size: 1.1rem; }
 .mobile-nav a.active { color: var(--color-brand); background: var(--color-brand-soft); }
 
+.planning-section { display: grid; gap: 1rem; }
+.goal-list { display: grid; gap: 0.9rem; }
+.goal-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1rem; align-items: center; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: 0 10px 26px rgba(25, 58, 45, 0.06); }
+.goal-progress { display: grid; place-items: center; width: 5.7rem; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(var(--color-brand) var(--goal-progress), var(--color-line) 0); }
+.goal-progress::before { content: ''; grid-area: 1 / 1; width: 4.55rem; aspect-ratio: 1; border-radius: 50%; background: var(--color-surface); }
+.goal-progress span { position: relative; grid-area: 1 / 1; font-size: 0.9rem; font-weight: 850; }
+.goal-details { min-width: 0; display: grid; gap: 0.28rem; }
+.goal-details h3, .goal-details p { margin: 0; overflow-wrap: anywhere; }
+.goal-details h3 { font-size: 1rem; }
+.goal-details p { font-weight: 750; font-size: 0.88rem; }
+.goal-details small { color: var(--color-muted); font-size: 0.8rem; }
+
 @media (min-width: 42rem) {
   .overview-grid, .entity-grid { grid-template-columns: repeat(2, 1fr); }
   .limit-summary { grid-template-columns: repeat(3, 1fr); }
@@ -795,6 +807,7 @@ button:disabled {
   .compact-form { grid-template-columns: repeat(2, 1fr); }
   .subcategory-row { grid-template-columns: 1.2rem minmax(0, 1fr) auto auto; }
   .subcategory-row > div { grid-column: auto; }
+  .goal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (min-width: 64rem) {

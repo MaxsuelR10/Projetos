@@ -26,12 +26,12 @@ function invoiceReference(card, purchaseDate, installmentIndex = 0) {
 }
 function splitMoney(amount, count) {
   const [whole, fraction = ""] = amount.split(".");
-  const units = BigInt(whole) * 10000n + BigInt(`${fraction}0000`.slice(0, 4));
+  const units = BigInt(whole) * 100n + BigInt(`${fraction}00`.slice(0, 2));
   const base = units / BigInt(count); const remainder = units % BigInt(count);
   return Array.from({ length: count }, (_, index) => {
     const part = base + (BigInt(index) < remainder ? 1n : 0n);
-    const integer = part / 10000n; const decimal = (part % 10000n).toString().padStart(4, "0").replace(/0+$/, "");
-    return decimal ? `${integer}.${decimal}` : integer.toString();
+    const integer = part / 100n; const decimal = (part % 100n).toString().padStart(2, "0");
+    return `${integer}.${decimal}`;
   });
 }
 function effectiveStatus(invoice) { return invoice.status === "OPEN" && invoice.closingDate < new Date() ? "CLOSED" : invoice.status; }
@@ -139,18 +139,7 @@ export async function cancelPurchaseInTransaction(db, userId, id) {
 
 export async function createPurchase(userId, cardId, data) {
   const purchase = await prisma.$transaction(async (db) => {
-    const card = await findCard(db, userId, cardId, true);
-    if (card.type !== "CREDIT") throw new AppError("Compras parceladas exigem um cartão de crédito", 400, "CARD_NOT_CREDIT");
-    await validateCategory(db, userId, data);
-    const used = await db.cardInstallment.aggregate({ where: { userId, creditCardId: card.id, status: "PENDING" }, _sum: { amount: true } });
-    if (new Prisma.Decimal(used._sum.amount ?? 0).plus(data.totalAmount).greaterThan(card.creditLimit)) throw new AppError("Esta compra ultrapassa o limite disponível", 409, "CARD_LIMIT_EXCEEDED");
-    const created = await db.cardPurchase.create({ data: { userId, creditCardId: card.id, categoryId: data.categoryId, subcategoryId: data.subcategoryId || null, description: data.description, merchant: nullable(data.merchant), totalAmount: data.totalAmount, purchaseDate: asDate(data.purchaseDate), installmentsCount: data.installmentsCount, notes: nullable(data.notes) } });
-    const amounts = splitMoney(data.totalAmount, data.installmentsCount);
-    for (let index = 0; index < amounts.length; index += 1) {
-      const reference = invoiceReference(card, data.purchaseDate, index);
-      const invoice = await ensureInvoice(db, userId, card, reference, amounts[index]);
-      await db.cardInstallment.create({ data: { userId, creditCardId: card.id, purchaseId: created.id, invoiceId: invoice.id, number: index + 1, amount: amounts[index], dueDate: reference.dueDate } });
-    }
+    const created = await createPurchaseInTransaction(db, userId, cardId, data);
     return db.cardPurchase.findUnique({ where: { id: created.id }, include: { category: { select: { id: true, name: true } }, subcategory: { select: { id: true, name: true } }, installments: { include: { invoice: { select: { id: true, referenceYear: true, referenceMonth: true, dueDate: true } } }, orderBy: { number: "asc" } } } });
   });
   return serializePurchase(purchase);

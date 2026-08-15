@@ -86,7 +86,7 @@ export async function listCategories(userId, { type, status }) {
     orderBy: [{ type: "asc" }, { isDefault: "desc" }, { name: "asc" }],
   });
 
-  return categories.map(serializeCategory);
+  return categories.map(serializeCategory).sort((first, second) => first.name.localeCompare(second.name, "pt-BR", { sensitivity: "base" }));
 }
 
 export async function createCategory(userId, data) {
