@@ -1,10 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
-
-function monthBounds(value) {
-  const [year, month] = (value || new Date().toISOString().slice(0, 7)).split("-").map(Number);
-  return { year, month, start: new Date(Date.UTC(year, month - 1, 1)), end: new Date(Date.UTC(year, month, 1)) };
-}
+import { monthBounds, transactionCompetenceFilter } from "../utils/financial-competence.js";
 
 function money(value) {
   return (value || new Prisma.Decimal(0)).toString();
@@ -20,20 +16,18 @@ function validPeriodTransactions(userId, range) {
     status: { not: "CANCELLED" },
     cardPurchaseId: null,
     creditCardInvoiceId: null,
-    date: { gte: range.start, lt: range.end },
+    ...transactionCompetenceFilter(range),
   };
 }
 
 function pendingPeriodTransactions(userId, range) {
-  const period = { gte: range.start, lt: range.end };
   return {
     userId,
     type: "EXPENSE",
     status: { in: ["PENDING", "OVERDUE"] },
     cardPurchaseId: null,
     creditCardInvoiceId: null,
-    // A due date takes precedence. Transactions without one use their transaction date.
-    OR: [{ dueDate: period }, { dueDate: null, date: period }],
+    ...transactionCompetenceFilter(range),
   };
 }
 
@@ -93,13 +87,17 @@ export async function getDashboard(userId, month) {
     return monthBounds(`${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`);
   });
 
-  const [periodTotals, accounts, pending, pendingInvoices, cards, upcomingInvoices] = await Promise.all([
+  const [periodTotals, accounts, pending, pendingCardInstallments, cards, upcomingInvoices] = await Promise.all([
     getPeriodTotals(userId, range),
     prisma.account.findMany({ where: { userId, isActive: true }, select: { id: true, name: true, currentBalance: true, color: true } }),
     prisma.transaction.aggregate({ where: pendingPeriodTransactions(userId, range), _sum: { amount: true } }),
-    prisma.creditCardInvoice.findMany({
-      where: { userId, status: { not: "PAID" }, referenceYear: range.year, referenceMonth: range.month },
-      select: { totalAmount: true, dueDate: true },
+    prisma.cardInstallment.findMany({
+      where: {
+        userId,
+        status: "PENDING",
+        invoice: { referenceYear: range.year, referenceMonth: range.month, status: { not: "PAID" } },
+      },
+      select: { amount: true, dueDate: true },
     }),
     prisma.creditCard.findMany({ where: { userId, type: "CREDIT", isActive: true }, select: { id: true, name: true, creditLimit: true } }),
     prisma.creditCardInvoice.findMany({ where: { userId, status: { not: "PAID" }, dueDate: { gte: range.start, lt: range.end } }, orderBy: { dueDate: "asc" }, take: 1, include: { creditCard: { select: { name: true } } } }),
@@ -119,10 +117,10 @@ export async function getDashboard(userId, month) {
     prisma.transaction.aggregate({ where: { ...pendingPeriodTransactions(userId, range), status: "OVERDUE" }, _sum: { amount: true } }),
   ]);
 
-  const invoicePending = pendingInvoices.reduce((total, invoice) => total.plus(invoice.totalAmount), new Prisma.Decimal(0));
-  const invoiceOverdue = pendingInvoices
-    .filter((invoice) => invoice.dueDate < new Date())
-    .reduce((total, invoice) => total.plus(invoice.totalAmount), new Prisma.Decimal(0));
+  const cardPending = pendingCardInstallments.reduce((total, installment) => total.plus(installment.amount), new Prisma.Decimal(0));
+  const cardOverdue = pendingCardInstallments
+    .filter((installment) => installment.dueDate < new Date())
+    .reduce((total, installment) => total.plus(installment.amount), new Prisma.Decimal(0));
   const pendingAmount = new Prisma.Decimal(pending._sum.amount || 0);
   const commitmentsByAccount = new Map(commitments.map((item) => [item.accountId, item._sum.amount ?? new Prisma.Decimal(0)]));
   const balance = accounts.reduce((total, item) => total.plus(item.currentBalance), new Prisma.Decimal(0));
@@ -137,8 +135,8 @@ export async function getDashboard(userId, month) {
       monthlyIncome: money(periodTotals.income),
       monthlyExpense: money(periodTotals.expense),
       monthlyResult: money(monthlyResult),
-      pendingBills: money(pendingAmount.plus(invoicePending)),
-      overdueBills: money(new Prisma.Decimal(overdueTransactions._sum.amount || 0).plus(invoiceOverdue)),
+      pendingBills: money(pendingAmount.plus(cardPending)),
+      overdueBills: money(new Prisma.Decimal(overdueTransactions._sum.amount || 0).plus(cardOverdue)),
       totalCardUsed: money(cardUsage.reduce((total, item) => total.plus(item.used), new Prisma.Decimal(0))),
       investedTotal: "0",
       netWorth: money(balance),

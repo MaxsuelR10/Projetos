@@ -52,10 +52,11 @@ describe.sequential("agregação financeira do dashboard", () => {
     await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Despesa comum", amount: "500", date: "2026-09-06", status: "COMPLETED", paymentMethod: "PIX" });
     const pending = await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Conta pendente", amount: "50", date: "2026-09-07", dueDate: "2026-09-10", status: "PENDING", paymentMethod: "PIX" });
     pendingExpenseId = pending.body.transaction.id;
+    await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Conta de outubro", amount: "70", date: "2026-09-08", dueDate: "2026-10-02", status: "PENDING", paymentMethod: "PIX" });
     const cancelled = await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Despesa cancelada", amount: "40", date: "2026-09-08", status: "PENDING", paymentMethod: "PIX" });
     expect((await agent.patch(`/api/transactions/${cancelled.body.transaction.id}/cancel`)).status).toBe(204);
 
-    const card = await agent.post("/api/cards").send({ name: "Cartão resumo", type: "CREDIT", creditLimit: "1000", closingDay: 20, dueDay: 27 });
+    const card = await agent.post("/api/cards").send({ name: "Cartão resumo", type: "CREDIT", creditLimit: "1000", closingDay: 20, dueDay: 5 });
     const purchase = await agent.post(`/api/cards/${card.body.card.id}/purchases`).send({ categoryId: expenseCategoryId, description: "Compra no cartão", totalAmount: "300", purchaseDate: "2026-08-10", installmentsCount: 1 });
     expect(purchase.status).toBe(201);
     invoiceId = purchase.body.purchase.installments[0].invoice.id;
@@ -63,6 +64,9 @@ describe.sequential("agregação financeira do dashboard", () => {
     const beforePayment = await dashboard();
     expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "850", pendingBills: "350", availableBalance: "1500", monthlyResult: "650" });
     expect(beforePayment.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "2000", expense: "850" });
+    const october = await agent.get("/api/dashboard?month=2026-10");
+    expect(october.body.summary).toMatchObject({ monthlyExpense: "70", pendingBills: "70" });
+    expect(october.body.monthlySeries.at(-1)).toMatchObject({ label: "10/2026", expense: "70" });
 
     const paidInvoice = await agent.post(`/api/invoices/${invoiceId}/pay`).send({ accountId, categoryId: expenseCategoryId, date: "2026-09-27", paymentMethod: "PIX" });
     expect(paidInvoice.status).toBe(200);

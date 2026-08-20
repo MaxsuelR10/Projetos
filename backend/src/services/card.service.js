@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
+import { cardInstallmentCompetence, invoiceDates } from "../utils/financial-competence.js";
 import { normalizeName } from "../utils/normalize-name.js";
 
 const cardSelect = { id: true, name: true, institution: true, brand: true, type: true, creditLimit: true, closingDay: true, dueDay: true, color: true, isActive: true };
@@ -14,16 +15,6 @@ const invoiceInclude = {
 function asDate(value) { return new Date(`${value}T00:00:00.000Z`); }
 function nullable(value) { return value?.trim() || null; }
 function serializeDecimal(value) { return value?.toString() ?? "0"; }
-function dateParts(value) { const date = new Date(value); return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() }; }
-function addMonths(year, month, amount) { const target = new Date(Date.UTC(year, month - 1 + amount, 1)); return { year: target.getUTCFullYear(), month: target.getUTCMonth() + 1 }; }
-function dateWithDay(year, month, day) { const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate(); return new Date(Date.UTC(year, month - 1, Math.min(day, lastDay))); }
-function invoiceReference(card, purchaseDate, installmentIndex = 0) {
-  const parts = dateParts(purchaseDate);
-  const initial = addMonths(parts.year, parts.month, parts.day <= card.closingDay ? 1 : 2);
-  const reference = addMonths(initial.year, initial.month, installmentIndex);
-  const closingMonth = addMonths(reference.year, reference.month, -1);
-  return { ...reference, closingDate: dateWithDay(closingMonth.year, closingMonth.month, card.closingDay), dueDate: dateWithDay(reference.year, reference.month, card.dueDay) };
-}
 function splitMoney(amount, count) {
   const [whole, fraction = ""] = amount.split(".");
   const units = BigInt(whole) * 100n + BigInt(`${fraction}00`.slice(0, 2));
@@ -69,10 +60,50 @@ async function ensureInvoice(db, userId, card, reference, amount) {
   const invoice = await db.creditCardInvoice.upsert({
     where: { creditCardId_referenceYear_referenceMonth: { creditCardId: card.id, referenceYear: reference.year, referenceMonth: reference.month } },
     create: { userId, creditCardId: card.id, referenceYear: reference.year, referenceMonth: reference.month, closingDate: reference.closingDate, dueDate: reference.dueDate, totalAmount: amount },
-    update: { totalAmount: { increment: amount } },
+    update: { closingDate: reference.closingDate, dueDate: reference.dueDate, totalAmount: { increment: amount } },
   });
   if (invoice.status === "PAID") throw new AppError("Não é possível lançar compra em uma fatura já paga", 409, "INVOICE_ALREADY_PAID");
   return invoice;
+}
+
+async function realignUnpaidInstallments(db, userId, card) {
+  const installments = await db.cardInstallment.findMany({
+    where: { userId, creditCardId: card.id, invoice: { status: { not: "PAID" } } },
+    include: { purchase: { select: { purchaseDate: true } }, invoice: { select: { id: true } } },
+  });
+  if (!installments.length) return;
+
+  const affectedInvoiceIds = new Set();
+  for (const installment of installments) {
+    const reference = cardInstallmentCompetence(card, installment.purchase.purchaseDate, installment.number - 1);
+    const target = await db.creditCardInvoice.upsert({
+      where: { creditCardId_referenceYear_referenceMonth: { creditCardId: card.id, referenceYear: reference.year, referenceMonth: reference.month } },
+      create: { userId, creditCardId: card.id, referenceYear: reference.year, referenceMonth: reference.month, closingDate: reference.closingDate, dueDate: reference.dueDate, totalAmount: "0" },
+      update: { closingDate: reference.closingDate, dueDate: reference.dueDate },
+    });
+    if (target.status === "PAID") throw new AppError("A nova configuração moveria parcelas para uma fatura já paga", 409, "INSTALLMENT_TARGET_INVOICE_PAID");
+    affectedInvoiceIds.add(installment.invoice.id);
+    affectedInvoiceIds.add(target.id);
+    await db.cardInstallment.update({ where: { id: installment.id }, data: { invoiceId: target.id, dueDate: reference.dueDate } });
+  }
+
+  const affectedInvoices = await db.creditCardInvoice.findMany({
+    where: { id: { in: [...affectedInvoiceIds] }, status: { not: "PAID" } },
+    include: { installments: { select: { amount: true, status: true } } },
+  });
+  for (const invoice of affectedInvoices) {
+    const dates = invoiceDates(card, invoice.referenceYear, invoice.referenceMonth);
+    const totalAmount = invoice.installments
+      .filter((installment) => installment.status !== "CANCELLED")
+      .reduce((total, installment) => total.plus(installment.amount), new Prisma.Decimal(0));
+    await db.creditCardInvoice.update({
+      where: { id: invoice.id },
+      data: { ...dates, totalAmount },
+    });
+  }
+  await db.creditCardInvoice.deleteMany({
+    where: { id: { in: [...affectedInvoiceIds] }, status: { not: "PAID" }, installments: { none: {} } },
+  });
 }
 
 export async function listCards(userId, status) {
@@ -99,7 +130,12 @@ export async function updateCard(userId, id, data) {
   const nextType = data.type ?? card.type;
   const next = { creditLimit: data.creditLimit ?? card.creditLimit.toString(), closingDay: data.closingDay === undefined ? card.closingDay : data.closingDay, dueDay: data.dueDay === undefined ? card.dueDay : data.dueDay };
   if (nextType === "CREDIT" && (!next.closingDay || !next.dueDay || next.creditLimit === "0")) throw new AppError("Cartão de crédito exige limite, fechamento e vencimento", 400, "INVALID_CREDIT_CARD");
-  const updated = await prisma.creditCard.update({ where: { id }, data: { ...(data.name !== undefined ? { name: data.name, normalizedName: normalizeName(data.name) } : {}), ...(data.institution !== undefined ? { institution: nullable(data.institution) } : {}), ...(data.brand !== undefined ? { brand: nullable(data.brand) } : {}), ...(data.type !== undefined ? { type: data.type } : {}), ...(data.creditLimit !== undefined ? { creditLimit: data.creditLimit } : {}), ...(data.closingDay !== undefined ? { closingDay: nextType === "CREDIT" ? data.closingDay : null } : {}), ...(data.dueDay !== undefined ? { dueDay: nextType === "CREDIT" ? data.dueDay : null } : {}), ...(data.color !== undefined ? { color: data.color || null } : {}), ...(data.isActive !== undefined ? { isActive: data.isActive } : {}) } });
+  const updated = await prisma.$transaction(async (db) => {
+    const result = await db.creditCard.update({ where: { id }, data: { ...(data.name !== undefined ? { name: data.name, normalizedName: normalizeName(data.name) } : {}), ...(data.institution !== undefined ? { institution: nullable(data.institution) } : {}), ...(data.brand !== undefined ? { brand: nullable(data.brand) } : {}), ...(data.type !== undefined ? { type: data.type } : {}), ...(data.creditLimit !== undefined ? { creditLimit: data.creditLimit } : {}), ...(data.closingDay !== undefined ? { closingDay: nextType === "CREDIT" ? data.closingDay : null } : {}), ...(data.dueDay !== undefined ? { dueDay: nextType === "CREDIT" ? data.dueDay : null } : {}), ...(data.color !== undefined ? { color: data.color || null } : {}), ...(data.isActive !== undefined ? { isActive: data.isActive } : {}) } });
+    const scheduleChanged = nextType === "CREDIT" && (result.closingDay !== card.closingDay || result.dueDay !== card.dueDay);
+    if (scheduleChanged) await realignUnpaidInstallments(db, userId, result);
+    return result;
+  });
   return getCard(userId, updated.id);
 }
 export async function deleteCard(userId, id) {
@@ -118,7 +154,7 @@ export async function createPurchaseInTransaction(db, userId, cardId, data) {
   const created = await db.cardPurchase.create({ data: { userId, creditCardId: card.id, categoryId: data.categoryId, subcategoryId: data.subcategoryId || null, description: data.description, merchant: nullable(data.merchant), totalAmount: data.totalAmount, purchaseDate: asDate(data.purchaseDate), installmentsCount: data.installmentsCount, notes: nullable(data.notes) } });
   const amounts = splitMoney(data.totalAmount, data.installmentsCount);
   for (let index = 0; index < amounts.length; index += 1) {
-    const reference = invoiceReference(card, data.purchaseDate, index);
+    const reference = cardInstallmentCompetence(card, data.purchaseDate, index);
     const invoice = await ensureInvoice(db, userId, card, reference, amounts[index]);
     await db.cardInstallment.create({ data: { userId, creditCardId: card.id, purchaseId: created.id, invoiceId: invoice.id, number: index + 1, amount: amounts[index], dueDate: reference.dueDate } });
   }

@@ -96,4 +96,37 @@ describe.sequential("cartões, parcelas e faturas", () => {
     expect(referenceFor("Antes do fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 9 });
     expect(referenceFor("Depois do fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 10 });
   });
+
+  it("atravessa o ano e realinha faturas abertas quando o vencimento do cartão muda", async () => {
+    const yearTurnCard = await agent.post("/api/cards").send({ name: "Cartão virada do ano", type: "CREDIT", creditLimit: "2000", closingDay: 20, dueDay: 27 });
+    expect(yearTurnCard.status).toBe(201);
+
+    const decemberPurchase = await agent.post(`/api/cards/${yearTurnCard.body.card.id}/purchases`).send({
+      categoryId,
+      description: "Compra em dezembro",
+      totalAmount: "900.00",
+      purchaseDate: "2026-12-10",
+      installmentsCount: 3,
+    });
+    expect(decemberPurchase.status).toBe(201);
+    expect(decemberPurchase.body.purchase.installments.map((item) => `${item.invoice.referenceYear}-${String(item.invoice.referenceMonth).padStart(2, "0")}`))
+      .toEqual(["2026-12", "2027-01", "2027-02"]);
+
+    const editableCard = await agent.post("/api/cards").send({ name: "Cartão editável", type: "CREDIT", creditLimit: "1000", closingDay: 20, dueDay: 5 });
+    const editablePurchase = await agent.post(`/api/cards/${editableCard.body.card.id}/purchases`).send({
+      categoryId,
+      description: "Compra a realinhar",
+      totalAmount: "100.00",
+      purchaseDate: "2026-08-10",
+      installmentsCount: 1,
+    });
+    expect(editablePurchase.body.purchase.installments[0].invoice).toMatchObject({ referenceYear: 2026, referenceMonth: 9 });
+
+    const changed = await agent.patch(`/api/cards/${editableCard.body.card.id}`).send({ dueDay: 27 });
+    expect(changed.status).toBe(200);
+    const realignedInvoices = await agent.get(`/api/cards/${editableCard.body.card.id}/invoices`);
+    expect(realignedInvoices.body.invoices).toHaveLength(1);
+    expect(realignedInvoices.body.invoices[0]).toMatchObject({ referenceYear: 2026, referenceMonth: 8, totalAmount: "100" });
+    expect(realignedInvoices.body.invoices[0].dueDate).toContain("2026-08-27");
+  });
 });

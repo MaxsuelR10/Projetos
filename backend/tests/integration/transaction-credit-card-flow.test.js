@@ -62,8 +62,10 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
     expect(installments.map((item) => item.amount)).toEqual(["33.34", "33.33", "33.33"]);
     expect(installments.reduce((total, item) => total + Number(item.amount), 0)).toBe(100);
 
+    const august = await agent.get("/api/dashboard?month=2026-08");
+    expect(august.body.summary).toMatchObject({ monthlyExpense: "153.34", monthlyResult: "846.66" });
     const september = await agent.get("/api/dashboard?month=2026-09");
-    expect(september.body.summary).toMatchObject({ monthlyExpense: "153.34", monthlyResult: "846.66" });
+    expect(september.body.summary).toMatchObject({ monthlyExpense: "33.33", monthlyResult: "966.67" });
     const october = await agent.get("/api/dashboard?month=2026-10");
     expect(october.body.summary).toMatchObject({ monthlyExpense: "33.33", monthlyResult: "966.67" });
   });
