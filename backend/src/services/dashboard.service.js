@@ -125,12 +125,15 @@ export async function getDashboard(userId, month) {
   const commitmentsByAccount = new Map(commitments.map((item) => [item.accountId, item._sum.amount ?? new Prisma.Decimal(0)]));
   const balance = accounts.reduce((total, item) => total.plus(item.currentBalance), new Prisma.Decimal(0));
   const projectedBalance = accounts.reduce((total, item) => total.plus(item.currentBalance).minus(commitmentsByAccount.get(item.id) ?? 0), new Prisma.Decimal(0));
-  const monthlyResult = projectedBalance.minus(periodTotals.expense);
+  // The Home summary uses the real balance stored in accounts. Pending
+  // commitments stay available to their specific screens and do not reduce
+  // this card a second time.
+  const monthlyResult = balance.minus(periodTotals.expense);
 
   return {
     period: `${range.year}-${String(range.month).padStart(2, "0")}`,
     summary: {
-      availableBalance: money(projectedBalance),
+      availableBalance: money(balance),
       currentBalance: money(balance),
       monthlyIncome: money(periodTotals.income),
       monthlyExpense: money(periodTotals.expense),

@@ -34,7 +34,7 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
     accountId = account.body.account.id;
     const categories = await agent.get("/api/categories?type=EXPENSE&status=active");
     categoryId = categories.body.categories.find((item) => item.name === "Alimentação").id;
-    const card = await agent.post("/api/cards").send({ name: "Cartao principal", type: "CREDIT", creditLimit: "500", closingDay: 20, dueDay: 27 });
+    const card = await agent.post("/api/cards").send({ name: "Cartao principal", type: "CREDIT", creditLimit: "1500", closingDay: 20, dueDay: 27 });
     expect(card.status).toBe(201); cardId = card.body.card.id;
 
     const missingCard = await agent.post("/api/transactions").send({ accountId, categoryId, type: "EXPENSE", description: "Sem cartao", amount: "10", date: "2026-08-11", paymentMethod: "CREDIT_CARD" });
@@ -47,26 +47,26 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
     const currentAccount = await agent.get(`/api/accounts/${accountId}`);
     expect(currentAccount.body.account.currentBalance).toBe("1000");
     const cards = await agent.get("/api/cards");
-    expect(cards.body.cards.find((item) => item.id === cardId)).toMatchObject({ usedLimit: "120", availableLimit: "380" });
+    expect(cards.body.cards.find((item) => item.id === cardId)).toMatchObject({ usedLimit: "120", availableLimit: "1380" });
     const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
     expect(invoices.body.invoices).toHaveLength(1);
     expect(invoices.body.invoices[0].totalAmount).toBe("120");
   });
 
   it("gera parcelas pelo lançamento e considera somente a competência da fatura no dashboard", async () => {
-    const created = await agent.post("/api/transactions").send({ accountId, categoryId, type: "EXPENSE", description: "Compra parcelada", amount: "100.00", date: "2026-08-11", paymentMethod: "CREDIT_CARD", creditCardId: cardId, installmentsCount: 3 });
+    const created = await agent.post("/api/transactions").send({ accountId, categoryId, type: "EXPENSE", description: "Compra parcelada", amount: "900.00", date: "2026-08-11", paymentMethod: "CREDIT_CARD", creditCardId: cardId, installmentsCount: 3 });
     expect(created.status).toBe(201);
 
     const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
     const installments = invoices.body.invoices.flatMap((invoice) => invoice.installments).filter((item) => item.purchase.description === "Compra parcelada").sort((first, second) => first.number - second.number);
-    expect(installments.map((item) => item.amount)).toEqual(["33.34", "33.33", "33.33"]);
-    expect(installments.reduce((total, item) => total + Number(item.amount), 0)).toBe(100);
+    expect(installments.map((item) => item.amount)).toEqual(["300", "300", "300"]);
+    expect(installments.reduce((total, item) => total + Number(item.amount), 0)).toBe(900);
 
     const august = await agent.get("/api/dashboard?month=2026-08");
-    expect(august.body.summary).toMatchObject({ monthlyExpense: "153.34", monthlyResult: "846.66" });
+    expect(august.body.summary).toMatchObject({ monthlyExpense: "420", monthlyResult: "580" });
     const september = await agent.get("/api/dashboard?month=2026-09");
-    expect(september.body.summary).toMatchObject({ monthlyExpense: "33.33", monthlyResult: "966.67" });
+    expect(september.body.summary).toMatchObject({ monthlyExpense: "300", monthlyResult: "700" });
     const october = await agent.get("/api/dashboard?month=2026-10");
-    expect(october.body.summary).toMatchObject({ monthlyExpense: "33.33", monthlyResult: "966.67" });
+    expect(october.body.summary).toMatchObject({ monthlyExpense: "300", monthlyResult: "700" });
   });
 });

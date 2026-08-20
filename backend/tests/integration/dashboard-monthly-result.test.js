@@ -33,7 +33,7 @@ async function dashboard(selectedMonth = month) {
 describe.sequential("resultado mensal do dashboard", () => {
   afterAll(async () => { await cleanup(); await prisma.$disconnect(); });
 
-  it("calcula saldo projetado menos despesas do período e respeita o seletor de mês", async () => {
+  it("calcula saldo atual menos despesas do período e respeita o seletor de mês", async () => {
     const registration = await agent.post("/api/auth/register").send({ name: "Resultado mensal", email: `resultado-${randomUUID()}@example.test`, password: "SenhaSegura123", currency: "BRL" });
     expect(registration.status).toBe(201);
     userId = registration.body.user.id;
@@ -68,7 +68,7 @@ describe.sequential("resultado mensal do dashboard", () => {
 
     const pending = await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Despesa a pagar", amount: "500", date, dueDate: date, status: "PENDING", paymentMethod: "PIX" });
     expect(pending.status).toBe(201);
-    expect(await dashboard()).toMatchObject({ availableBalance: "910.33", monthlyExpense: "1365.67", monthlyResult: "-455.34" });
+    expect(await dashboard()).toMatchObject({ availableBalance: "1410.33", monthlyExpense: "1365.67", monthlyResult: "44.66" });
 
     const paid = await agent.patch(`/api/transactions/${pending.body.transaction.id}`).send({ status: "COMPLETED" });
     expect(paid.status).toBe(200);
