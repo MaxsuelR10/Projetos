@@ -32,6 +32,8 @@ export function AccountsPage() {
   const [error, setError] = useState('')
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingAccount, setEditingAccount] = useState(null)
+  const [balanceAccount, setBalanceAccount] = useState(null)
+  const [balance, setBalance] = useState('')
   const [form, setForm] = useState(emptyForm)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -68,12 +70,14 @@ export function AccountsPage() {
   }, [])
 
   function openCreate() {
+    setBalanceAccount(null)
     setEditingAccount(null)
     setForm(emptyForm)
     setIsFormOpen(true)
   }
 
   function openEdit(account) {
+    setBalanceAccount(null)
     setEditingAccount(account)
     setForm({
       name: account.name,
@@ -93,6 +97,20 @@ export function AccountsPage() {
   function closeForm() {
     setIsFormOpen(false)
     setEditingAccount(null)
+    setError('')
+  }
+
+  function openBalanceEditor(account) {
+    setEditingAccount(null)
+    setIsFormOpen(false)
+    setBalanceAccount(account)
+    setBalance(account.currentBalance)
+    setError('')
+  }
+
+  function closeBalanceEditor() {
+    setBalanceAccount(null)
+    setBalance('')
     setError('')
   }
 
@@ -133,6 +151,26 @@ export function AccountsPage() {
       await loadAccounts()
     } catch (requestError) {
       setError(getApiError(requestError))
+    }
+  }
+
+  async function submitBalance(event) {
+    event.preventDefault()
+    const nextBalance = parseCurrency(balance)
+    if (!nextBalance) { setError('Informe um saldo vÃ¡lido.'); return }
+    if (Number(nextBalance) === Number(balanceAccount.currentBalance)) { closeBalanceEditor(); return }
+    if (!window.confirm(`Alterar o saldo atual de ${formatCurrency(balanceAccount.currentBalance, user.currency)} para ${formatCurrency(nextBalance, user.currency)}?`)) return
+
+    setIsSubmitting(true)
+    setError('')
+    try {
+      await accountService.adjustBalance(balanceAccount.id, nextBalance)
+      closeBalanceEditor()
+      await loadAccounts()
+    } catch (requestError) {
+      setError(getApiError(requestError))
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -194,6 +232,21 @@ export function AccountsPage() {
         </section>
       ) : null}
 
+      {balanceAccount ? (
+        <section className="editor-card" aria-labelledby="balance-form-title">
+          <div className="editor-heading">
+            <div><p className="eyebrow">Ajuste manual</p><h2 id="balance-form-title">Editar saldo de {balanceAccount.name}</h2></div>
+            <button className="text-button" type="button" onClick={closeBalanceEditor}>Cancelar</button>
+          </div>
+          <form className="entity-form" onSubmit={submitBalance}>
+            <label className="form-field"><span>Saldo atual registrado</span><input value={formatCurrency(balanceAccount.currentBalance, user.currency)} disabled /></label>
+            <label className="form-field"><span>Novo saldo atual</span><CurrencyInput name="currentBalance" value={balance} onChange={(event) => setBalance(event.target.value)} required /></label>
+            <p className="form-help form-field-wide">O ajuste Ã© registrado no histÃ³rico da conta e nÃ£o cria uma receita ou despesa.</p>
+            <button className="primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Salvando...' : 'Confirmar ajuste de saldo'}</button>
+          </form>
+        </section>
+      ) : null}
+
       {isLoading ? <p className="loading-inline">Carregando contas...</p> : null}
       {!isLoading && accounts.length === 0 ? (
         <EmptyState title="Nenhuma conta cadastrada" description="Adicione sua primeira conta para começar a visualizar seu saldo." action={<button className="primary-button inline-button" type="button" onClick={openCreate}>Cadastrar conta</button>} />
@@ -212,6 +265,7 @@ export function AccountsPage() {
               {Number(account.pendingCommitments) > 0 ? <small>Compromissos pendentes: {formatCurrency(account.pendingCommitments, user.currency)}</small> : <small>Saldo inicial: {formatCurrency(account.initialBalance, user.currency)}</small>}
               <div className="card-actions">
                 <button type="button" onClick={() => openEdit(account)}>Editar</button>
+                <button type="button" onClick={() => openBalanceEditor(account)}>Editar saldo</button>
                 <button type="button" onClick={() => toggleStatus(account)}>{account.isActive ? 'Desativar' : 'Ativar'}</button>
                 <button type="button" className="danger-action" onClick={() => remove(account)}>Excluir</button>
               </div>

@@ -3,6 +3,7 @@ import {
   cancel,
   create,
   createTransferHandler,
+  getById,
   list,
   listTransfersHandler,
   remove,
@@ -27,6 +28,7 @@ export const transferRouter = Router();
 transactionRouter.use(requireAuth);
 transactionRouter.get("/", validate(listTransactionsSchema), asyncHandler(list));
 transactionRouter.post("/", validate(createTransactionSchema), asyncHandler(create));
+transactionRouter.get("/:id", validate(transactionIdSchema), asyncHandler(getById));
 transactionRouter.patch("/:id", validate(updateTransactionSchema), asyncHandler(update));
 transactionRouter.patch("/:id/cancel", validate(transactionIdSchema), asyncHandler(cancel));
 transactionRouter.delete("/:id", validate(transactionIdSchema), asyncHandler(remove));

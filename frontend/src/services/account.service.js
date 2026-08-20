@@ -16,6 +16,11 @@ export const accountService = {
     return response.data.account
   },
 
+  async adjustBalance(id, currentBalance) {
+    const response = await api.patch(`/accounts/${id}/balance`, { currentBalance })
+    return response.data.account
+  },
+
   async remove(id) {
     await api.delete(`/accounts/${id}`)
   },

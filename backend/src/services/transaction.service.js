@@ -9,6 +9,22 @@ const relationSelect = {
   creditCard: { select: { id: true, name: true, color: true } },
 };
 
+const detailRelationSelect = {
+  ...relationSelect,
+  cardPurchase: {
+    select: {
+      id: true, description: true, totalAmount: true, purchaseDate: true, installmentsCount: true,
+      installments: {
+        select: {
+          id: true, number: true, amount: true, dueDate: true, status: true,
+          invoice: { select: { referenceYear: true, referenceMonth: true, dueDate: true } },
+        },
+        orderBy: { number: "asc" },
+      },
+    },
+  },
+};
+
 function asDate(value) {
   return new Date(`${value}T00:00:00.000Z`);
 }
@@ -19,7 +35,17 @@ function nullable(value) {
 
 function serializeTransaction(transaction) {
   const { userId: _userId, ...publicTransaction } = transaction;
-  return { ...publicTransaction, amount: transaction.amount.toString() };
+  return {
+    ...publicTransaction,
+    amount: transaction.amount.toString(),
+    ...(transaction.cardPurchase ? {
+      cardPurchase: {
+        ...transaction.cardPurchase,
+        totalAmount: transaction.cardPurchase.totalAmount.toString(),
+        installments: transaction.cardPurchase.installments?.map((installment) => ({ ...installment, amount: installment.amount.toString() })),
+      },
+    } : {}),
+  };
 }
 
 function affectsBalance(status, paymentMethod) {
@@ -68,6 +94,12 @@ export async function listTransactions(userId, filters) {
   return { transactions: transactions.map(serializeTransaction), pagination: { page: filters.page, limit: filters.limit, total } };
 }
 
+export async function getTransaction(userId, id) {
+  const transaction = await prisma.transaction.findFirst({ where: { id, userId }, include: detailRelationSelect });
+  if (!transaction) throw new AppError("LanÃ§amento nÃ£o encontrado", 404, "TRANSACTION_NOT_FOUND");
+  return serializeTransaction(transaction);
+}
+
 export async function createTransaction(userId, data) {
   const transaction = await prisma.$transaction(async (db) => {
     await findActiveAccount(db, userId, data.accountId);
@@ -111,6 +143,7 @@ export async function updateTransaction(userId, id, data) {
     await validateClassification(db, userId, next);
 
     if (existing.cardPurchaseId && (data.paymentMethod !== undefined || data.creditCardId !== undefined || data.amount !== undefined || data.date !== undefined || data.categoryId !== undefined || data.subcategoryId !== undefined)) throw new AppError("Edite compras de cartao na tela de Cartoes", 409, "CARD_PURCHASE_EDIT_PROTECTED");
+    if (data.paymentMethod === "CREDIT_CARD" && existing.paymentMethod !== "CREDIT_CARD") throw new AppError("Para registrar uma compra no cartao, crie um novo lanÃ§amento", 409, "CARD_PAYMENT_METHOD_EDIT_PROTECTED");
     if (affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
     const updated = await db.transaction.update({
       where: { id: existing.id },

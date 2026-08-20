@@ -44,6 +44,10 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
     expect(created.status).toBe(201);
     expect(created.body.transaction.creditCard.id).toBe(cardId);
 
+    const details = await agent.get(`/api/transactions/${created.body.transaction.id}`);
+    expect(details.status).toBe(200);
+    expect(details.body.transaction).toMatchObject({ creditCard: { id: cardId }, cardPurchase: { installmentsCount: 1 } });
+
     const currentAccount = await agent.get(`/api/accounts/${accountId}`);
     expect(currentAccount.body.account.currentBalance).toBe("1000");
     const cards = await agent.get("/api/cards");

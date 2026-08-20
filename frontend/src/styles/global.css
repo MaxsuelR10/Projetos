@@ -700,6 +700,14 @@ button:disabled {
 .row-actions { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 0.25rem; }
 .row-actions button { padding: 0.35rem 0.45rem; }
 
+.details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.8rem 1rem; margin: 0; }
+.details-grid div { display: grid; gap: 0.15rem; }
+.details-grid dt { color: var(--color-muted); font-size: 0.75rem; font-weight: 800; }
+.details-grid dd { margin: 0; font-size: 0.92rem; }
+.detail-notes { margin: 1rem 0 0; line-height: 1.5; }
+.detail-installments { display: grid; gap: 0.55rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+.detail-installment-list { display: grid; gap: 0.3rem; color: var(--color-muted); font-size: 0.82rem; }
+
 .entity-grid { display: grid; gap: 0.85rem; }
 
 .account-card { display: grid; gap: 0.75rem; padding: 1.15rem; }

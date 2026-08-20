@@ -1,4 +1,5 @@
 import {
+  adjustAccountBalance,
   createAccount,
   deleteAccount,
   getAccount,
@@ -26,6 +27,15 @@ export async function update(request, response) {
     request.auth.userId,
     request.validated.params.id,
     request.validated.body,
+  );
+  return response.status(200).json({ account });
+}
+
+export async function adjustBalance(request, response) {
+  const account = await adjustAccountBalance(
+    request.auth.userId,
+    request.validated.params.id,
+    request.validated.body.currentBalance,
   );
   return response.status(200).json({ account });
 }

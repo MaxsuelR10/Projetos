@@ -21,6 +21,8 @@ const paymentMethods = [['PIX', 'PIX'], ['CREDIT_CARD', 'Cartão de crédito'], 
 function formatDate(value) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(value)) }
 function statusLabel(status) { return ({ PENDING: 'Pendente', COMPLETED: 'Concluído', OVERDUE: 'Em atraso', CANCELLED: 'Cancelado' })[status] || status }
 
+function paymentMethodLabel(value) { return paymentMethods.find(([method]) => method === value)?.[1] || 'Não informado' }
+
 export function TransactionsPage() {
   const { user } = useAuth()
   const [mode, setMode] = useState('movement')
@@ -32,6 +34,8 @@ export function TransactionsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [editingMovement, setEditingMovement] = useState(null)
+  const [details, setDetails] = useState(null)
 
   const load = useCallback(async () => {
     setIsLoading(true)
@@ -78,6 +82,38 @@ export function TransactionsPage() {
   }
   function changeTransfer(event) { setTransfer((current) => ({ ...current, [event.target.name]: event.target.value })) }
 
+  function closeMovementEditor() {
+    setEditingMovement(null)
+    setMovement((current) => ({ ...initialMovement, type: current.type, accountId: current.accountId, date: today }))
+  }
+
+  function openMovementEditor(item) {
+    if (item.cardPurchaseId) {
+      setError('Para preservar as parcelas, compras no cartão devem ser alteradas pela tela de Cartões.')
+      return
+    }
+    if (item.status === 'CANCELLED') {
+      setError('Lançamentos cancelados não podem ser editados.')
+      return
+    }
+    setMode('movement')
+    setEditingMovement(item)
+    setMovement({
+      type: item.type, accountId: item.accountId, categoryId: item.categoryId, subcategoryId: item.subcategoryId || '',
+      creditCardId: null, purchaseType: 'ONE_TIME', installmentsCount: '', description: item.description,
+      amount: item.amount, date: item.date.slice(0, 10), dueDate: item.dueDate?.slice(0, 10) || '',
+      status: item.status, paymentMethod: item.paymentMethod || 'PIX', notes: item.notes || '',
+    })
+    setError('')
+  }
+
+  async function openDetails(item) {
+    try {
+      setDetails(await transactionService.get(item.id))
+      setError('')
+    } catch (requestError) { setError(getApiError(requestError)) }
+  }
+
   async function submitMovement(event) {
     event.preventDefault(); setIsSubmitting(true); setError('')
     try {
@@ -93,8 +129,9 @@ export function TransactionsPage() {
         notes: movement.notes || null,
         ...(isCreditCard ? { creditCardId, installmentsCount: purchaseType === 'INSTALLMENT' ? Number(installmentsCount) : 1 } : {}),
       }
-      await transactionService.create(payload)
-      setMovement((current) => ({ ...initialMovement, type: current.type, accountId: current.accountId, date: today }))
+      if (editingMovement) await transactionService.update(editingMovement.id, payload)
+      else await transactionService.create(payload)
+      closeMovementEditor()
       await load()
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
   }
@@ -115,7 +152,7 @@ export function TransactionsPage() {
     <div className="page-heading"><p className="eyebrow">Fase 3 · Movimentações</p><h1>Registre seu dinheiro</h1><p>Receitas, despesas e transferências atualizam os saldos das suas contas com segurança.</p></div>
     {error ? <div className="form-alert" role="alert">{error}</div> : null}
     <div className="segmented-control transaction-mode" aria-label="Tipo de lançamento"><button type="button" className={mode === 'movement' ? 'is-selected' : ''} onClick={() => setMode('movement')}>Receita ou despesa</button><button type="button" className={mode === 'transfer' ? 'is-selected' : ''} onClick={() => setMode('transfer')}>Transferir entre contas</button></div>
-    {mode === 'movement' ? <section className="editor-card"><form className="entity-form" onSubmit={submitMovement}>
+    {mode === 'movement' ? <section className="editor-card">{editingMovement ? <div className="editor-heading"><div><p className="eyebrow">Editar lançamento</p><h2>{editingMovement.description}</h2></div><button className="text-button" type="button" onClick={closeMovementEditor}>Cancelar edição</button></div> : null}<form className="entity-form" onSubmit={submitMovement}>
       <div className="segmented-control compact-segmented"><button type="button" className={`income ${movement.type === 'INCOME' ? 'is-selected' : ''}`} onClick={() => setMovement((current) => ({ ...current, type: 'INCOME', categoryId: '', subcategoryId: '', paymentMethod: 'PIX', creditCardId: null, purchaseType: 'ONE_TIME', installmentsCount: '' }))}>Receita</button><button type="button" className={`expense ${movement.type === 'EXPENSE' ? 'is-selected' : ''}`} onClick={() => setMovement((current) => ({ ...current, type: 'EXPENSE', categoryId: '', subcategoryId: '' }))}>Despesa</button></div>
       <label className="form-field"><span>Descrição</span><input name="description" value={movement.description} onChange={changeMovement} required minLength="2" maxLength="180" placeholder={movement.type === 'INCOME' ? 'Ex.: Salário' : 'Ex.: Mercado'} /></label>
       <label className="form-field"><span>Valor</span><CurrencyInput name="amount" value={movement.amount} onChange={changeMovement} required /></label>
@@ -128,7 +165,7 @@ export function TransactionsPage() {
       <label className="form-field"><span>Forma de pagamento</span><select name="paymentMethod" value={movement.paymentMethod} onChange={changeMovement}>{availablePaymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {movement.paymentMethod === 'CREDIT_CARD' ? <><label className="form-field"><span>Cartão utilizado</span>{creditCards.length ? <select name="creditCardId" value={movement.creditCardId || ''} onChange={changeMovement} required><option value="">Selecione o cartão</option>{creditCards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select> : <small className="form-help">Você ainda não possui cartões de crédito cadastrados. <Link to="/cartoes">Cadastrar cartão</Link></small>}</label><label className="form-field"><span>Tipo da compra</span><select name="purchaseType" value={movement.purchaseType} onChange={changeMovement}><option value="ONE_TIME">À vista</option><option value="INSTALLMENT">Parcelada</option></select></label>{movement.purchaseType === 'INSTALLMENT' ? <label className="form-field"><span>Número de parcelas</span><input name="installmentsCount" value={movement.installmentsCount} onChange={changeMovement} required type="number" min="2" max="120" step="1" inputMode="numeric" /></label> : null}</> : null}
       <label className="form-field form-field-wide"><span>Observações</span><input name="notes" value={movement.notes} onChange={changeMovement} maxLength="5000" placeholder="Opcional" /></label>
-      <button className="primary-button" type="submit" disabled={isSubmitting || !data.accounts.length}>{isSubmitting ? 'Salvando...' : 'Salvar lançamento'}</button>
+      <button className="primary-button" type="submit" disabled={isSubmitting || !data.accounts.length}>{isSubmitting ? 'Salvando...' : editingMovement ? 'Salvar alterações' : 'Salvar lançamento'}</button>
     </form></section> : <section className="editor-card"><form className="entity-form" onSubmit={submitTransfer}>
       <label className="form-field"><span>Conta de origem</span><select name="fromAccountId" value={transfer.fromAccountId} onChange={changeTransfer} required><option value="">Selecione</option>{data.accounts.map((account) => <option key={account.id} value={account.id}>{account.name} ({formatCurrency(account.currentBalance, user.currency)})</option>)}</select></label>
       <label className="form-field"><span>Conta de destino</span><select name="toAccountId" value={transfer.toAccountId} onChange={changeTransfer} required><option value="">Selecione</option>{data.accounts.filter((account) => account.id !== transfer.fromAccountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
@@ -137,10 +174,11 @@ export function TransactionsPage() {
       <label className="form-field form-field-wide"><span>Descrição</span><input name="description" value={transfer.description} onChange={changeTransfer} maxLength="180" placeholder="Opcional" /></label>
       <button className="primary-button" type="submit" disabled={isSubmitting || data.accounts.length < 2}>{isSubmitting ? 'Transferindo...' : 'Confirmar transferência'}</button>
     </form></section>}
+    {details ? <section className="editor-card" aria-labelledby="transaction-details-title"><div className="editor-heading"><div><p className="eyebrow">Detalhes do lançamento</p><h2 id="transaction-details-title">{details.description}</h2></div><button className="text-button" type="button" onClick={() => setDetails(null)}>Fechar</button></div><dl className="details-grid"><div><dt>Tipo</dt><dd>{details.type === 'INCOME' ? 'Receita' : 'Despesa'}</dd></div><div><dt>Valor</dt><dd>{formatCurrency(details.amount, user.currency)}</dd></div><div><dt>Conta</dt><dd>{details.account.name}</dd></div><div><dt>Categoria</dt><dd>{details.category.name}{details.subcategory ? ` · ${details.subcategory.name}` : ''}</dd></div><div><dt>Data</dt><dd>{formatDate(details.date)}</dd></div><div><dt>Vencimento</dt><dd>{details.dueDate ? formatDate(details.dueDate) : 'Não informado'}</dd></div><div><dt>Situação</dt><dd>{statusLabel(details.status)}</dd></div><div><dt>Forma de pagamento</dt><dd>{paymentMethodLabel(details.paymentMethod)}</dd></div>{details.creditCard ? <div><dt>Cartão vinculado</dt><dd>{details.creditCard.name}</dd></div> : null}<div><dt>Criado em</dt><dd>{formatDate(details.createdAt)}</dd></div></dl>{details.notes ? <p className="detail-notes"><strong>Observações</strong><br />{details.notes}</p> : null}{details.cardPurchase ? <section className="detail-installments"><strong>Parcelamento: {details.cardPurchase.installmentsCount}x</strong><div className="detail-installment-list">{details.cardPurchase.installments.map((installment) => <span key={installment.id}>{installment.number}ª parcela · {formatCurrency(installment.amount, user.currency)} · {formatDate(installment.dueDate)}</span>)}</div></section> : null}</section> : null}
     <section className="movement-history"><div className="section-heading"><div><p className="eyebrow">Histórico</p><h2>Últimas movimentações</h2></div><div className="history-filter"><button type="button" className={filter === 'ALL' ? 'is-selected' : ''} onClick={() => setFilter('ALL')}>Todas</button><button type="button" className={filter === 'INCOME' ? 'is-selected income' : ''} onClick={() => setFilter('INCOME')}>Receitas</button><button type="button" className={filter === 'EXPENSE' ? 'is-selected expense' : ''} onClick={() => setFilter('EXPENSE')}>Despesas</button></div></div>
       {isLoading ? <p className="loading-inline">Carregando movimentações...</p> : null}
       {!isLoading && filteredTransactions.length === 0 ? <EmptyState title="Nenhum lançamento ainda" description="Registre uma receita ou despesa para começar seu histórico." /> : null}
-      {!isLoading && filteredTransactions.length > 0 ? <div className="movement-list">{filteredTransactions.map((item) => <article className="movement-row" key={item.id}><span className={`movement-symbol ${item.type === 'INCOME' ? 'income' : 'expense'}`}>{item.type === 'INCOME' ? '+' : '−'}</span><div className="movement-info"><strong>{item.description}</strong><small>{item.account.name} · {item.category.name} · {formatDate(item.date)}</small></div><div className="movement-value"><strong className={item.type === 'INCOME' ? 'income-text' : 'expense-text'}>{item.type === 'INCOME' ? '+' : '−'} {formatCurrency(item.amount, user.currency)}</strong><span className={`status-tag status-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</span></div><div className="row-actions">{item.status !== 'COMPLETED' && item.status !== 'CANCELLED' ? <button type="button" onClick={() => complete(item)}>Concluir</button> : null}{item.status !== 'CANCELLED' ? <button type="button" onClick={() => cancel(item)}>Cancelar</button> : null}<button className="danger-action" type="button" onClick={() => remove(item)}>Excluir</button></div></article>)}</div> : null}
+      {!isLoading && filteredTransactions.length > 0 ? <div className="movement-list">{filteredTransactions.map((item) => <article className="movement-row" key={item.id}><span className={`movement-symbol ${item.type === 'INCOME' ? 'income' : 'expense'}`}>{item.type === 'INCOME' ? '+' : '−'}</span><div className="movement-info"><strong>{item.description}</strong><small>{item.account.name} · {item.category.name} · {formatDate(item.date)}</small></div><div className="movement-value"><strong className={item.type === 'INCOME' ? 'income-text' : 'expense-text'}>{item.type === 'INCOME' ? '+' : '−'} {formatCurrency(item.amount, user.currency)}</strong><span className={`status-tag status-${item.status.toLowerCase()}`}>{statusLabel(item.status)}</span></div><div className="row-actions"><button type="button" onClick={() => openDetails(item)}>Detalhes</button>{item.status !== 'CANCELLED' ? <button type="button" onClick={() => openMovementEditor(item)}>Editar</button> : null}{item.status !== 'COMPLETED' && item.status !== 'CANCELLED' ? <button type="button" onClick={() => complete(item)}>Concluir</button> : null}{item.status !== 'CANCELLED' ? <button type="button" onClick={() => cancel(item)}>Cancelar</button> : null}<button className="danger-action" type="button" onClick={() => remove(item)}>Excluir</button></div></article>)}</div> : null}
     </section>
     {!isLoading && data.transfers.length > 0 ? <section className="movement-history"><div className="section-heading"><div><p className="eyebrow">Entre suas contas</p><h2>Transferências</h2></div></div><div className="movement-list">{data.transfers.map((item) => <article className="movement-row" key={item.id}><span className="movement-symbol transfer">↔</span><div className="movement-info"><strong>{item.fromAccount.name} → {item.toAccount.name}</strong><small>{item.description || 'Transferência entre contas'} · {formatDate(item.date)}</small></div><div className="movement-value"><strong>{formatCurrency(item.amount, user.currency)}</strong>{item.isReversed ? <span className="status-tag">Estornada</span> : null}</div><div className="row-actions">{!item.isReversed ? <button className="danger-action" type="button" onClick={() => reverse(item)}>Estornar</button> : null}</div></article>)}</div></section> : null}
   </section>

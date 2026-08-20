@@ -1,4 +1,5 @@
 import { prisma } from "../config/database.js";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../utils/app-error.js";
 import { normalizeName } from "../utils/normalize-name.js";
 
@@ -119,6 +120,28 @@ export async function updateAccount(userId, id, data) {
   const updatedAccount = await prisma.account.update({
     where: { id: account.id },
     data: updateData,
+  });
+
+  return serializeAccount(updatedAccount);
+}
+
+export async function adjustAccountBalance(userId, id, currentBalance) {
+  const updatedAccount = await prisma.$transaction(async (db) => {
+    const account = await db.account.findFirst({ where: { id, userId } });
+    if (!account) throw new AppError("Conta nÃ£o encontrada", 404, "ACCOUNT_NOT_FOUND");
+
+    const newBalance = new Prisma.Decimal(currentBalance);
+    await db.accountBalanceAdjustment.create({
+      data: {
+        userId,
+        accountId: account.id,
+        previousBalance: account.currentBalance,
+        newBalance,
+        difference: newBalance.minus(account.currentBalance),
+      },
+    });
+
+    return db.account.update({ where: { id: account.id }, data: { currentBalance: newBalance } });
   });
 
   return serializeAccount(updatedAccount);

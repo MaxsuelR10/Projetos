@@ -36,6 +36,7 @@ async function removeUserData(userId) {
   await prisma.$transaction([
     prisma.transaction.deleteMany({ where: { userId } }),
     prisma.transfer.deleteMany({ where: { userId } }),
+    prisma.accountBalanceAdjustment.deleteMany({ where: { userId } }),
     prisma.subcategory.deleteMany({ where: { userId } }),
     prisma.category.deleteMany({ where: { userId } }),
     prisma.account.deleteMany({ where: { userId } }),
@@ -114,6 +115,27 @@ describe.sequential("contas e categorias", () => {
       initialBalance: "1250.5",
       currentBalance: "1250.5",
     });
+  });
+
+  it("ajusta o saldo atual sem alterar o saldo inicial e mantém histórico", async () => {
+    const reactivated = await primaryAgent.patch(`/api/accounts/${primaryAccountId}`).send({ isActive: true });
+    expect(reactivated.status).toBe(200);
+    const adjusted = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "1500" });
+    expect(adjusted.status).toBe(200);
+    expect(adjusted.body.account).toMatchObject({ initialBalance: "1250.5", currentBalance: "1500" });
+
+    const adjustment = await prisma.accountBalanceAdjustment.findFirst({ where: { accountId: primaryAccountId, userId: primaryUserId }, orderBy: { createdAt: "desc" } });
+    expect(adjustment).toMatchObject({ previousBalance: expect.anything(), newBalance: expect.anything(), difference: expect.anything() });
+    expect(adjustment.previousBalance.toString()).toBe("1250.5");
+    expect(adjustment.newBalance.toString()).toBe("1500");
+    expect(adjustment.difference.toString()).toBe("249.5");
+
+    const dashboard = await primaryAgent.get("/api/dashboard?month=2026-08");
+    expect(dashboard.status).toBe(200);
+    expect(dashboard.body.summary.availableBalance).toBe("1500");
+
+    const forbidden = await primaryAgent.patch(`/api/accounts/${secondaryAccountId}/balance`).send({ currentBalance: "1" });
+    expect(forbidden.status).toBe(404);
   });
 
   it("cria categorias e subcategorias sem duplicidade", async () => {

@@ -1,6 +1,7 @@
 import {
   cancelTransaction,
   createTransaction,
+  getTransaction,
   listTransactions,
   updateTransaction,
 } from "../services/transaction.service.js";
@@ -15,6 +16,11 @@ export async function list(request, response) {
 export async function create(request, response) {
   const transaction = await createTransaction(request.auth.userId, request.validated.body);
   return response.status(201).json({ transaction });
+}
+
+export async function getById(request, response) {
+  const transaction = await getTransaction(request.auth.userId, request.validated.params.id);
+  return response.status(200).json({ transaction });
 }
 
 export async function update(request, response) {

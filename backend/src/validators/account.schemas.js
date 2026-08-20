@@ -57,3 +57,8 @@ export const updateAccountSchema = z.object({
     .strict()
     .refine((data) => Object.keys(data).length > 0, "Informe ao menos um campo para atualizar"),
 });
+
+export const adjustAccountBalanceSchema = z.object({
+  params: z.object({ id: idSchema }),
+  body: z.object({ currentBalance: moneySchema }).strict(),
+});

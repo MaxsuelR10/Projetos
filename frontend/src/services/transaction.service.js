@@ -11,6 +11,11 @@ export const transactionService = {
     return response.data.transaction
   },
 
+  async get(id) {
+    const response = await api.get(`/transactions/${id}`)
+    return response.data.transaction
+  },
+
   async update(id, data) {
     const response = await api.patch(`/transactions/${id}`, data)
     return response.data.transaction
