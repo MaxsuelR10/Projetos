@@ -84,6 +84,7 @@ export function AccountsPage() {
       institution: account.institution || '',
       type: account.type,
       initialBalance: account.initialBalance,
+      currentBalance: account.currentBalance,
       color: account.color || '#1D6B4F',
       icon: account.icon || '',
     })
@@ -121,6 +122,9 @@ export function AccountsPage() {
 
     try {
       if (editingAccount) {
+        const nextBalance = parseCurrency(form.currentBalance)
+        const balanceChanged = Number(nextBalance) !== Number(editingAccount.currentBalance)
+        if (balanceChanged && !window.confirm(`Alterar o saldo atual de ${formatCurrency(editingAccount.currentBalance, user.currency)} para ${formatCurrency(nextBalance, user.currency)}?`)) return
         await accountService.update(editingAccount.id, {
           name: form.name,
           institution: form.institution || null,
@@ -128,6 +132,7 @@ export function AccountsPage() {
           color: form.color,
           icon: form.icon || null,
         })
+        if (balanceChanged) await accountService.adjustBalance(editingAccount.id, nextBalance)
       } else {
         await accountService.create({
           ...form,
@@ -221,7 +226,7 @@ export function AccountsPage() {
             <label className="form-field"><span>Instituição</span><input name="institution" value={form.institution} onChange={updateForm} maxLength="120" placeholder="Ex.: Nubank" /></label>
             <label className="form-field"><span>Tipo</span><select name="type" value={form.type} onChange={updateForm}>{accountTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             {editingAccount ? (
-              <label className="form-field"><span>Saldo atual</span><input value={formatCurrency(editingAccount.currentBalance, user.currency)} disabled /><small>O saldo será alterado apenas por movimentações financeiras.</small></label>
+              <label className="form-field"><span>Saldo atual</span><CurrencyInput name="currentBalance" value={form.currentBalance} onChange={updateForm} required /><small>O saldo inicial histórico será preservado. O ajuste fica registrado no histórico da conta.</small></label>
             ) : (
               <label className="form-field"><span>Saldo inicial</span><CurrencyInput name="initialBalance" value={form.initialBalance} onChange={updateForm} required /></label>
             )}

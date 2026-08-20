@@ -697,7 +697,7 @@ button:disabled {
 .status-pending, .status-overdue { color: #936300; background: #fff4ce; }
 .status-completed { color: var(--color-brand); background: var(--color-brand-soft); }
 .status-cancelled { color: var(--color-danger); background: var(--color-danger-soft); }
-.row-actions { grid-column: 2 / -1; display: flex; justify-content: flex-end; gap: 0.25rem; }
+.row-actions { grid-column: 2 / -1; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.25rem; min-width: 0; }
 .row-actions button { padding: 0.35rem 0.45rem; }
 
 .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.8rem 1rem; margin: 0; }
