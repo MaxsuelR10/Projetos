@@ -30,7 +30,7 @@ describe.sequential("visibilidade de lancamentos pendentes", () => {
     accountId = account.body.account.id;
     const categories = await agent.get("/api/categories?type=EXPENSE&status=active");
     expenseCategoryId = categories.body.categories.find((item) => item.name === "Alimentação").id;
-    const created = await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Conta futura", amount: "865.67", date: "2026-08-11", dueDate: "2026-08-20", status: "PENDING", paymentMethod: "PIX" });
+    const created = await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Conta futura", amount: "865.67", date: "2026-08-11", dueDate: "2026-08-31", status: "PENDING", paymentMethod: "PIX" });
     expect(created.status).toBe(201); pendingId = created.body.transaction.id;
 
     const movements = await agent.get("/api/transactions?limit=20");
@@ -38,7 +38,7 @@ describe.sequential("visibilidade de lancamentos pendentes", () => {
     const accountAfterCreation = await agent.get(`/api/accounts/${accountId}`);
     expect(accountAfterCreation.body.account).toMatchObject({ currentBalance: "0", projectedBalance: "0", pendingCommitments: "0" });
     const dashboard = await agent.get("/api/dashboard?month=2026-08");
-    expect(dashboard.body.summary).toMatchObject({ pendingBills: "0", totalCardUsed: "0" });
+    expect(dashboard.body.summary).toMatchObject({ pendingBills: "865.67", totalCardUsed: "0" });
 
     const overdue = await agent.patch(`/api/transactions/${pendingId}`).send({ status: "OVERDUE" });
     expect(overdue.status).toBe(200);

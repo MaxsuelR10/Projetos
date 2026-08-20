@@ -68,7 +68,7 @@ describe.sequential("resultado mensal do dashboard", () => {
 
     const pending = await agent.post("/api/transactions").send({ accountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Despesa a pagar", amount: "500", date, dueDate: date, status: "PENDING", paymentMethod: "PIX" });
     expect(pending.status).toBe(201);
-    expect(await dashboard()).toMatchObject({ availableBalance: "910.33", monthlyExpense: "865.67", monthlyResult: "44.66" });
+    expect(await dashboard()).toMatchObject({ availableBalance: "910.33", monthlyExpense: "1365.67", monthlyResult: "-455.34" });
 
     const paid = await agent.patch(`/api/transactions/${pending.body.transaction.id}`).send({ status: "COMPLETED" });
     expect(paid.status).toBe(200);
