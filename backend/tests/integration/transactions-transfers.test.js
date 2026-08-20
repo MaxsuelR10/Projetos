@@ -65,6 +65,22 @@ describe.sequential("lançamentos e transferências", () => {
   });
 
   it("aplica somente lançamentos concluídos ao saldo e permite concluir pendências", async () => {
+    const pixWithoutCard = await primaryAgent.post("/api/transactions").send({
+      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "PIX sem cartao", amount: "5.00", date: "2026-08-11", status: "PENDING", paymentMethod: "PIX",
+    });
+    expect(pixWithoutCard.status).toBe(201);
+    expect(pixWithoutCard.body.transaction.creditCardId ?? null).toBeNull();
+
+    const invalidResidual = await primaryAgent.post("/api/transactions").send({
+      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "PIX invalido", amount: "5.00", date: "2026-08-11", status: "PENDING", paymentMethod: "PIX", creditCardId: "",
+    });
+    expect(invalidResidual.status).toBe(400);
+    expect(invalidResidual.body.error.code).toBe("VALIDATION_ERROR");
+    expect(invalidResidual.body.error.details.some((detail) => detail.field === "creditCardId")).toBe(true);
+
+    const removePix = await primaryAgent.delete(`/api/transactions/${pixWithoutCard.body.transaction.id}`);
+    expect(removePix.status).toBe(204);
+
     const income = await primaryAgent.post("/api/transactions").send({
       accountId: primaryAccountId, categoryId: incomeCategoryId, type: "INCOME", description: "Salário", amount: "1000.00", date: "2026-08-11", status: "COMPLETED", paymentMethod: "PIX",
     });

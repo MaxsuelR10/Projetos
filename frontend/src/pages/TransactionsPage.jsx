@@ -14,7 +14,7 @@ import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 import { CategorySelect } from '../components/forms/CategorySelect.jsx'
 
 const today = new Date().toISOString().slice(0, 10)
-const initialMovement = { type: 'EXPENSE', accountId: '', categoryId: '', subcategoryId: '', creditCardId: '', purchaseType: 'ONE_TIME', installmentsCount: '2', description: '', amount: '', date: today, dueDate: '', status: 'COMPLETED', paymentMethod: 'PIX', notes: '' }
+const initialMovement = { type: 'EXPENSE', accountId: '', categoryId: '', subcategoryId: '', creditCardId: null, purchaseType: 'ONE_TIME', installmentsCount: '2', description: '', amount: '', date: today, dueDate: '', status: 'COMPLETED', paymentMethod: 'PIX', notes: '' }
 const initialTransfer = { fromAccountId: '', toAccountId: '', amount: '', date: today, description: '' }
 const paymentMethods = [['PIX', 'PIX'], ['CREDIT_CARD', 'Cartão de crédito'], ['DEBIT_CARD', 'Cartão de débito'], ['BOLETO', 'Boleto'], ['CASH', 'Dinheiro'], ['BANK_TRANSFER', 'Transferência bancária'], ['AUTOMATIC_DEBIT', 'Débito automático'], ['OTHER', 'Outro']]
 
@@ -54,7 +54,27 @@ export function TransactionsPage() {
 
   function changeMovement(event) {
     const { name, value } = event.target
-    setMovement((current) => ({ ...current, [name]: value, ...(name === 'type' ? { categoryId: '', subcategoryId: '', ...(value === 'INCOME' ? { paymentMethod: 'PIX', creditCardId: '' } : {}) } : {}), ...(name === 'categoryId' ? { subcategoryId: '' } : {}), ...(name === 'paymentMethod' && value !== 'CREDIT_CARD' ? { creditCardId: '', purchaseType: 'ONE_TIME' } : {}), ...(name === 'paymentMethod' && value === 'CREDIT_CARD' ? { status: 'COMPLETED' } : {}) }))
+    setMovement((current) => {
+      const next = { ...current, [name]: value }
+      if (name === 'type') {
+        next.categoryId = ''
+        next.subcategoryId = ''
+        if (value === 'INCOME') {
+          next.paymentMethod = 'PIX'
+          next.creditCardId = null
+          next.purchaseType = 'ONE_TIME'
+          next.installmentsCount = ''
+        }
+      }
+      if (name === 'categoryId') next.subcategoryId = ''
+      if (name === 'paymentMethod') {
+        next.creditCardId = null
+        next.purchaseType = 'ONE_TIME'
+        next.installmentsCount = value === 'CREDIT_CARD' ? '2' : ''
+        if (value === 'CREDIT_CARD') next.status = 'COMPLETED'
+      }
+      return next
+    })
   }
   function changeTransfer(event) { setTransfer((current) => ({ ...current, [event.target.name]: event.target.value })) }
 
@@ -62,8 +82,18 @@ export function TransactionsPage() {
     event.preventDefault(); setIsSubmitting(true); setError('')
     try {
       if (movement.paymentMethod === 'CREDIT_CARD' && !movement.creditCardId) { setError('Selecione o cartão de crédito utilizado.'); return }
-      const { purchaseType, installmentsCount, ...transaction } = movement
-      await transactionService.create({ ...transaction, amount: parseCurrency(movement.amount), ...(movement.paymentMethod === 'CREDIT_CARD' ? { installmentsCount: purchaseType === 'INSTALLMENT' ? Number(installmentsCount) : 1 } : {}), subcategoryId: movement.subcategoryId || null, dueDate: movement.dueDate || null, paymentMethod: movement.paymentMethod || null, notes: movement.notes || null })
+      const isCreditCard = movement.paymentMethod === 'CREDIT_CARD'
+      const { purchaseType, installmentsCount, creditCardId, ...transaction } = movement
+      const payload = {
+        ...transaction,
+        amount: parseCurrency(movement.amount),
+        subcategoryId: movement.subcategoryId || null,
+        dueDate: movement.dueDate || null,
+        paymentMethod: movement.paymentMethod || null,
+        notes: movement.notes || null,
+        ...(isCreditCard ? { creditCardId, installmentsCount: purchaseType === 'INSTALLMENT' ? Number(installmentsCount) : 1 } : {}),
+      }
+      await transactionService.create(payload)
       setMovement((current) => ({ ...initialMovement, type: current.type, accountId: current.accountId, date: today }))
       await load()
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
@@ -86,7 +116,7 @@ export function TransactionsPage() {
     {error ? <div className="form-alert" role="alert">{error}</div> : null}
     <div className="segmented-control transaction-mode" aria-label="Tipo de lançamento"><button type="button" className={mode === 'movement' ? 'is-selected' : ''} onClick={() => setMode('movement')}>Receita ou despesa</button><button type="button" className={mode === 'transfer' ? 'is-selected' : ''} onClick={() => setMode('transfer')}>Transferir entre contas</button></div>
     {mode === 'movement' ? <section className="editor-card"><form className="entity-form" onSubmit={submitMovement}>
-      <div className="segmented-control compact-segmented"><button type="button" className={`income ${movement.type === 'INCOME' ? 'is-selected' : ''}`} onClick={() => setMovement((current) => ({ ...current, type: 'INCOME', categoryId: '', subcategoryId: '', paymentMethod: 'PIX', creditCardId: '' }))}>Receita</button><button type="button" className={`expense ${movement.type === 'EXPENSE' ? 'is-selected' : ''}`} onClick={() => setMovement((current) => ({ ...current, type: 'EXPENSE', categoryId: '', subcategoryId: '' }))}>Despesa</button></div>
+      <div className="segmented-control compact-segmented"><button type="button" className={`income ${movement.type === 'INCOME' ? 'is-selected' : ''}`} onClick={() => setMovement((current) => ({ ...current, type: 'INCOME', categoryId: '', subcategoryId: '', paymentMethod: 'PIX', creditCardId: null, purchaseType: 'ONE_TIME', installmentsCount: '' }))}>Receita</button><button type="button" className={`expense ${movement.type === 'EXPENSE' ? 'is-selected' : ''}`} onClick={() => setMovement((current) => ({ ...current, type: 'EXPENSE', categoryId: '', subcategoryId: '' }))}>Despesa</button></div>
       <label className="form-field"><span>Descrição</span><input name="description" value={movement.description} onChange={changeMovement} required minLength="2" maxLength="180" placeholder={movement.type === 'INCOME' ? 'Ex.: Salário' : 'Ex.: Mercado'} /></label>
       <label className="form-field"><span>Valor</span><CurrencyInput name="amount" value={movement.amount} onChange={changeMovement} required /></label>
       <label className="form-field"><span>Conta</span><select name="accountId" value={movement.accountId} onChange={changeMovement} required><option value="">Selecione</option>{data.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
@@ -96,7 +126,7 @@ export function TransactionsPage() {
       <label className="form-field"><span>Vencimento (opcional)</span><input name="dueDate" value={movement.dueDate} onChange={changeMovement} type="date" /></label>
       {movement.paymentMethod === 'CREDIT_CARD' ? <p className="form-help">Compra confirmada no cartão: o saldo da conta só será alterado no pagamento da fatura.</p> : <label className="form-field"><span>Situação</span><select name="status" value={movement.status} onChange={changeMovement}><option value="COMPLETED">Concluído — atualiza saldo</option><option value="PENDING">Pendente — não atualiza saldo</option><option value="OVERDUE">Em atraso — não atualiza saldo</option></select></label>}
       <label className="form-field"><span>Forma de pagamento</span><select name="paymentMethod" value={movement.paymentMethod} onChange={changeMovement}>{availablePaymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      {movement.paymentMethod === 'CREDIT_CARD' ? <><label className="form-field"><span>Cartão utilizado</span>{creditCards.length ? <select name="creditCardId" value={movement.creditCardId} onChange={changeMovement} required><option value="">Selecione o cartão</option>{creditCards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select> : <small className="form-help">Você ainda não possui cartões de crédito cadastrados. <Link to="/cartoes">Cadastrar cartão</Link></small>}</label><label className="form-field"><span>Tipo da compra</span><select name="purchaseType" value={movement.purchaseType} onChange={changeMovement}><option value="ONE_TIME">À vista</option><option value="INSTALLMENT">Parcelada</option></select></label>{movement.purchaseType === 'INSTALLMENT' ? <label className="form-field"><span>Número de parcelas</span><input name="installmentsCount" value={movement.installmentsCount} onChange={changeMovement} required type="number" min="2" max="120" step="1" inputMode="numeric" /></label> : null}</> : null}
+      {movement.paymentMethod === 'CREDIT_CARD' ? <><label className="form-field"><span>Cartão utilizado</span>{creditCards.length ? <select name="creditCardId" value={movement.creditCardId || ''} onChange={changeMovement} required><option value="">Selecione o cartão</option>{creditCards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select> : <small className="form-help">Você ainda não possui cartões de crédito cadastrados. <Link to="/cartoes">Cadastrar cartão</Link></small>}</label><label className="form-field"><span>Tipo da compra</span><select name="purchaseType" value={movement.purchaseType} onChange={changeMovement}><option value="ONE_TIME">À vista</option><option value="INSTALLMENT">Parcelada</option></select></label>{movement.purchaseType === 'INSTALLMENT' ? <label className="form-field"><span>Número de parcelas</span><input name="installmentsCount" value={movement.installmentsCount} onChange={changeMovement} required type="number" min="2" max="120" step="1" inputMode="numeric" /></label> : null}</> : null}
       <label className="form-field form-field-wide"><span>Observações</span><input name="notes" value={movement.notes} onChange={changeMovement} maxLength="5000" placeholder="Opcional" /></label>
       <button className="primary-button" type="submit" disabled={isSubmitting || !data.accounts.length}>{isSubmitting ? 'Salvando...' : 'Salvar lançamento'}</button>
     </form></section> : <section className="editor-card"><form className="entity-form" onSubmit={submitTransfer}>
