@@ -16,13 +16,17 @@ let incomeCategoryId;
 let expenseCategoryId;
 
 async function register(agent, email) {
-  const response = await agent.post("/api/auth/register").send({ name: "Usuário de testes", email, password, currency: "BRL" });
+  const response = await agent
+    .post("/api/auth/register")
+    .send({ name: "Usuário de testes", email, password, currency: "BRL" });
   expect(response.status).toBe(201);
   return response.body.user.id;
 }
 
 async function createAccount(agent, name, initialBalance = "0") {
-  const response = await agent.post("/api/accounts").send({ name, type: "DIGITAL", initialBalance });
+  const response = await agent
+    .post("/api/accounts")
+    .send({ name, type: "DIGITAL", initialBalance });
   expect(response.status).toBe(201);
   return response.body.account.id;
 }
@@ -53,123 +57,248 @@ describe.sequential("lançamentos e transferências", () => {
   });
 
   it("prepara usuários, contas e categorias", async () => {
-    primaryUserId = await register(primaryAgent, `movimentos-${suffix}@example.test`);
-    secondaryUserId = await register(secondaryAgent, `isolamento-movimentos-${suffix}@example.test`);
-    primaryAccountId = await createAccount(primaryAgent, "Conta principal", "100");
+    primaryUserId = await register(
+      primaryAgent,
+      `movimentos-${suffix}@example.test`,
+    );
+    secondaryUserId = await register(
+      secondaryAgent,
+      `isolamento-movimentos-${suffix}@example.test`,
+    );
+    primaryAccountId = await createAccount(
+      primaryAgent,
+      "Conta principal",
+      "100",
+    );
     destinationAccountId = await createAccount(primaryAgent, "Reserva", "0");
     await createAccount(secondaryAgent, "Conta privada", "0");
 
     const categories = await primaryAgent.get("/api/categories?status=active");
-    incomeCategoryId = categories.body.categories.find((category) => category.name === "Salário").id;
-    expenseCategoryId = categories.body.categories.find((category) => category.name === "Alimentação").id;
+    incomeCategoryId = categories.body.categories.find(
+      (category) => category.name === "Salário",
+    ).id;
+    expenseCategoryId = categories.body.categories.find(
+      (category) => category.name === "Alimentação",
+    ).id;
   });
 
   it("aplica somente lançamentos concluídos ao saldo e permite concluir pendências", async () => {
     const pixWithoutCard = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "PIX sem cartao", amount: "5.00", date: "2026-08-11", status: "PENDING", paymentMethod: "PIX",
+      accountId: primaryAccountId,
+      categoryId: expenseCategoryId,
+      type: "EXPENSE",
+      description: "PIX sem cartao",
+      amount: "5.00",
+      date: "2026-08-11",
+      status: "PENDING",
+      paymentMethod: "PIX",
     });
     expect(pixWithoutCard.status).toBe(201);
     expect(pixWithoutCard.body.transaction.creditCardId ?? null).toBeNull();
 
     const invalidResidual = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "PIX invalido", amount: "5.00", date: "2026-08-11", status: "PENDING", paymentMethod: "PIX", creditCardId: "",
+      accountId: primaryAccountId,
+      categoryId: expenseCategoryId,
+      type: "EXPENSE",
+      description: "PIX invalido",
+      amount: "5.00",
+      date: "2026-08-11",
+      status: "PENDING",
+      paymentMethod: "PIX",
+      creditCardId: "",
     });
     expect(invalidResidual.status).toBe(400);
     expect(invalidResidual.body.error.code).toBe("VALIDATION_ERROR");
-    expect(invalidResidual.body.error.details.some((detail) => detail.field === "creditCardId")).toBe(true);
+    expect(
+      invalidResidual.body.error.details.some(
+        (detail) => detail.field === "creditCardId",
+      ),
+    ).toBe(true);
 
-    const removePix = await primaryAgent.delete(`/api/transactions/${pixWithoutCard.body.transaction.id}`);
+    const removePix = await primaryAgent.delete(
+      `/api/transactions/${pixWithoutCard.body.transaction.id}`,
+    );
     expect(removePix.status).toBe(204);
 
     const income = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: incomeCategoryId, type: "INCOME", description: "Salário", amount: "1000.00", date: "2026-08-11", status: "COMPLETED", paymentMethod: "PIX",
+      accountId: primaryAccountId,
+      categoryId: incomeCategoryId,
+      type: "INCOME",
+      description: "Salário",
+      amount: "1000.00",
+      date: "2026-08-11",
+      status: "COMPLETED",
+      paymentMethod: "PIX",
     });
     expect(income.status).toBe(201);
     expect(income.body.transaction.amount).toBe("1000");
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1100");
 
     const pendingExpense = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Mercado", amount: "125.50", date: "2026-08-11", status: "PENDING", paymentMethod: "DEBIT_CARD",
+      accountId: primaryAccountId,
+      categoryId: expenseCategoryId,
+      type: "EXPENSE",
+      description: "Mercado",
+      amount: "125.50",
+      date: "2026-08-11",
+      status: "PENDING",
+      paymentMethod: "DEBIT_CARD",
     });
     expect(pendingExpense.status).toBe(201);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1100");
 
-    const complete = await primaryAgent.patch(`/api/transactions/${pendingExpense.body.transaction.id}`).send({ status: "COMPLETED" });
+    const complete = await primaryAgent
+      .patch(`/api/transactions/${pendingExpense.body.transaction.id}`)
+      .send({ status: "COMPLETED" });
     expect(complete.status).toBe(200);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("974.5");
 
-    const updateAmount = await primaryAgent.patch(`/api/transactions/${pendingExpense.body.transaction.id}`).send({ amount: "200.00" });
+    const updateAmount = await primaryAgent
+      .patch(`/api/transactions/${pendingExpense.body.transaction.id}`)
+      .send({ amount: "200.00" });
     expect(updateAmount.status).toBe(200);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("900");
 
-    const cancellation = await primaryAgent.delete(`/api/transactions/${pendingExpense.body.transaction.id}`);
+    const cancellation = await primaryAgent.delete(
+      `/api/transactions/${pendingExpense.body.transaction.id}`,
+    );
     expect(cancellation.status).toBe(204);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1100");
   });
 
   it("edita valores, conta e situação sem duplicar o impacto no saldo", async () => {
     const expense = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Despesa editável", amount: "100", date: "2026-08-11", status: "COMPLETED", paymentMethod: "PIX", notes: "original",
+      accountId: primaryAccountId,
+      categoryId: expenseCategoryId,
+      type: "EXPENSE",
+      description: "Despesa editável",
+      amount: "100",
+      date: "2026-08-11",
+      status: "COMPLETED",
+      paymentMethod: "PIX",
+      notes: "original",
     });
     expect(expense.status).toBe(201);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1000");
 
-    const increasedExpense = await primaryAgent.patch(`/api/transactions/${expense.body.transaction.id}`).send({ amount: "150", description: "Despesa revisada", notes: "revisada" });
+    const increasedExpense = await primaryAgent
+      .patch(`/api/transactions/${expense.body.transaction.id}`)
+      .send({
+        amount: "150",
+        description: "Despesa revisada",
+        notes: "revisada",
+      });
     expect(increasedExpense.status).toBe(200);
     expect(increasedExpense.body.transaction.amount).toBe("150");
     expect(await balance(primaryAgent, primaryAccountId)).toBe("950");
-    const dashboardAfterExpenseEdit = await primaryAgent.get("/api/dashboard?month=2026-08");
+    const dashboardAfterExpenseEdit = await primaryAgent.get(
+      "/api/dashboard?month=2026-08",
+    );
     expect(dashboardAfterExpenseEdit.status).toBe(200);
-    expect(dashboardAfterExpenseEdit.body.summary).toMatchObject({ monthlyIncome: "1000", monthlyExpense: "150", monthlyResult: "800" });
+    expect(dashboardAfterExpenseEdit.body.summary).toMatchObject({
+      monthlyIncome: "1000",
+      monthlyExpense: "150",
+      monthlyResult: "850",
+    });
 
-    const movedExpense = await primaryAgent.patch(`/api/transactions/${expense.body.transaction.id}`).send({ accountId: destinationAccountId });
+    const movedExpense = await primaryAgent
+      .patch(`/api/transactions/${expense.body.transaction.id}`)
+      .send({ accountId: destinationAccountId });
     expect(movedExpense.status).toBe(200);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1100");
     expect(await balance(primaryAgent, destinationAccountId)).toBe("-150");
 
-    const pendingExpense = await primaryAgent.patch(`/api/transactions/${expense.body.transaction.id}`).send({ status: "PENDING" });
+    const pendingExpense = await primaryAgent
+      .patch(`/api/transactions/${expense.body.transaction.id}`)
+      .send({ status: "PENDING" });
     expect(pendingExpense.status).toBe(200);
     expect(await balance(primaryAgent, destinationAccountId)).toBe("0");
 
-    const completedExpense = await primaryAgent.patch(`/api/transactions/${expense.body.transaction.id}`).send({ status: "COMPLETED" });
+    const completedExpense = await primaryAgent
+      .patch(`/api/transactions/${expense.body.transaction.id}`)
+      .send({ status: "COMPLETED" });
     expect(completedExpense.status).toBe(200);
     expect(await balance(primaryAgent, destinationAccountId)).toBe("-150");
 
-    const details = await primaryAgent.get(`/api/transactions/${expense.body.transaction.id}`);
+    const details = await primaryAgent.get(
+      `/api/transactions/${expense.body.transaction.id}`,
+    );
     expect(details.status).toBe(200);
-    expect(details.body.transaction).toMatchObject({ description: "Despesa revisada", notes: "revisada", account: { id: destinationAccountId } });
+    expect(details.body.transaction).toMatchObject({
+      description: "Despesa revisada",
+      notes: "revisada",
+      account: { id: destinationAccountId },
+    });
 
     const income = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: incomeCategoryId, type: "INCOME", description: "Receita editável", amount: "500", date: "2026-08-11", status: "COMPLETED", paymentMethod: "PIX",
+      accountId: primaryAccountId,
+      categoryId: incomeCategoryId,
+      type: "INCOME",
+      description: "Receita editável",
+      amount: "500",
+      date: "2026-08-11",
+      status: "COMPLETED",
+      paymentMethod: "PIX",
     });
     expect(income.status).toBe(201);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1600");
-    const increasedIncome = await primaryAgent.patch(`/api/transactions/${income.body.transaction.id}`).send({ amount: "600" });
+    const increasedIncome = await primaryAgent
+      .patch(`/api/transactions/${income.body.transaction.id}`)
+      .send({ amount: "600" });
     expect(increasedIncome.status).toBe(200);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1700");
 
-    expect((await primaryAgent.delete(`/api/transactions/${expense.body.transaction.id}`)).status).toBe(204);
-    expect((await primaryAgent.delete(`/api/transactions/${income.body.transaction.id}`)).status).toBe(204);
+    expect(
+      (
+        await primaryAgent.delete(
+          `/api/transactions/${expense.body.transaction.id}`,
+        )
+      ).status,
+    ).toBe(204);
+    expect(
+      (
+        await primaryAgent.delete(
+          `/api/transactions/${income.body.transaction.id}`,
+        )
+      ).status,
+    ).toBe(204);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1100");
     expect(await balance(primaryAgent, destinationAccountId)).toBe("0");
   });
 
   it("valida categoria e bloqueia dados de outro usuário", async () => {
     const invalidType = await primaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "INCOME", description: "Incompatível", amount: "1", date: "2026-08-11",
+      accountId: primaryAccountId,
+      categoryId: expenseCategoryId,
+      type: "INCOME",
+      description: "Incompatível",
+      amount: "1",
+      date: "2026-08-11",
     });
     expect(invalidType.status).toBe(400);
     expect(invalidType.body.error.code).toBe("CATEGORY_TYPE_MISMATCH");
 
     const isolated = await secondaryAgent.post("/api/transactions").send({
-      accountId: primaryAccountId, categoryId: expenseCategoryId, type: "EXPENSE", description: "Tentativa", amount: "1", date: "2026-08-11",
+      accountId: primaryAccountId,
+      categoryId: expenseCategoryId,
+      type: "EXPENSE",
+      description: "Tentativa",
+      amount: "1",
+      date: "2026-08-11",
     });
     expect(isolated.status).toBe(404);
   });
 
   it("transfere atomicamente, é idempotente e pode ser estornada", async () => {
     const key = randomUUID();
-    const payload = { fromAccountId: primaryAccountId, toAccountId: destinationAccountId, amount: "300.00", date: "2026-08-11", description: "Reserva mensal", idempotencyKey: key };
+    const payload = {
+      fromAccountId: primaryAccountId,
+      toAccountId: destinationAccountId,
+      amount: "300.00",
+      date: "2026-08-11",
+      description: "Reserva mensal",
+      idempotencyKey: key,
+    };
     const created = await primaryAgent.post("/api/transfers").send(payload);
     expect(created.status).toBe(201);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("800");
@@ -180,10 +309,18 @@ describe.sequential("lançamentos e transferências", () => {
     expect(repeated.body.idempotent).toBe(true);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("800");
 
-    const sameAccount = await primaryAgent.post("/api/transfers").send({ ...payload, toAccountId: primaryAccountId, idempotencyKey: randomUUID() });
+    const sameAccount = await primaryAgent
+      .post("/api/transfers")
+      .send({
+        ...payload,
+        toAccountId: primaryAccountId,
+        idempotencyKey: randomUUID(),
+      });
     expect(sameAccount.status).toBe(400);
 
-    const reversed = await primaryAgent.delete(`/api/transfers/${created.body.transfer.id}`);
+    const reversed = await primaryAgent.delete(
+      `/api/transfers/${created.body.transfer.id}`,
+    );
     expect(reversed.status).toBe(200);
     expect(reversed.body.transfer.isReversed).toBe(true);
     expect(await balance(primaryAgent, primaryAccountId)).toBe("1100");

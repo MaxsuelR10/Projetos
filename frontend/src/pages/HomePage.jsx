@@ -1,55 +1,186 @@
-import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { dashboardService } from '../services/dashboard.service.js'
-import { formatCurrency } from '../utils/formatters.js'
-import { getApiError } from '../utils/get-api-error.js'
-import { useAuth } from '../hooks/useAuth.js'
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { dashboardService } from "../services/dashboard.service.js";
+import { formatCurrency } from "../utils/formatters.js";
+import { getApiError } from "../utils/get-api-error.js";
+import { useAuth } from "../hooks/useAuth.js";
 
 export function HomePage() {
-  const { user } = useAuth()
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
-  const [state, setState] = useState({ loading: true, error: '', data: null })
+  const { user } = useAuth();
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [state, setState] = useState({ loading: true, error: "", data: null });
 
   useEffect(() => {
-    let active = true
-    dashboardService.get(month)
-      .then((data) => active && setState({ loading: false, error: '', data }))
-      .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }))
-    return () => { active = false }
-  }, [month])
+    let active = true;
+    dashboardService
+      .get(month)
+      .then((data) => active && setState({ loading: false, error: "", data }))
+      .catch(
+        (error) =>
+          active &&
+          setState({ loading: false, error: getApiError(error), data: null }),
+      );
+    return () => {
+      active = false;
+    };
+  }, [month]);
 
-  const data = state.data
-  const max = data ? Math.max(...data.monthlySeries.flatMap((item) => [Number(item.income), Number(item.expense)]), 1) : 1
+  const data = state.data;
+  const max = data
+    ? Math.max(
+        ...data.monthlySeries.flatMap((item) => [
+          Number(item.income),
+          Number(item.expense),
+        ]),
+        1,
+      )
+    : 1;
 
-  return <section className="page-stack">
-    <div className="page-heading with-action">
-      <div>
-        <p className="eyebrow">Fase 6 · Visão geral</p>
-        <h1>Olá, {user.name.split(' ')[0]}.</h1>
-        <p>Seu resumo financeiro atualizado.</p>
+  return (
+    <section className="page-stack">
+      <div className="page-heading with-action">
+        <div>
+          <p className="eyebrow">Fase 6 · Visão geral</p>
+          <h1>Olá, {user.name.split(" ")[0]}.</h1>
+          <p>Seu resumo financeiro atualizado.</p>
+        </div>
+        <label className="month-picker">
+          <span>Período</span>
+          <input
+            type="month"
+            value={month}
+            onChange={(event) => setMonth(event.target.value)}
+          />
+        </label>
       </div>
-      <label className="month-picker"><span>Período</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>
-    </div>
-    {state.error ? <div className="form-alert">{state.error}</div> : null}
-    {state.loading ? <p className="loading-inline">Carregando painel...</p> : null}
-    {data ? <>
-      <section className="overview-grid">
-        <article className="overview-card overview-card-primary"><span>Saldo disponível</span><strong>{formatCurrency(data.summary.availableBalance, user.currency)}</strong></article>
-        <article className="overview-card"><span>Resultado mensal</span><strong>{formatCurrency(data.summary.monthlyResult, user.currency)}</strong><small>Saldo disponível menos despesas</small></article>
-      </section>
-      <section className="metric-grid">
-        <article><span>Receitas</span><strong className="income-text">{formatCurrency(data.summary.monthlyIncome, user.currency)}</strong></article>
-        <article><span>Despesas</span><strong className="expense-text">{formatCurrency(data.summary.monthlyExpense, user.currency)}</strong></article>
-      </section>
-      <section className="dashboard-panel">
-        <p className="eyebrow">Fluxo</p>
-        <h2>Receitas x despesas</h2>
-        <div className="bar-chart">{data.monthlySeries.map((item) => <div className="bar-group" key={item.label}><div className="bars"><i className="bar-income" style={{ height: `${Number(item.income) / max * 100}%` }} /><i className="bar-expense" style={{ height: `${Number(item.expense) / max * 100}%` }} /></div><small>{item.label}</small></div>)}</div>
-      </section>
-      <section className="setup-card">
-        <div><p className="eyebrow">Ações rápidas</p><h2>Organize o próximo lançamento.</h2></div>
-        <div className="setup-actions"><Link className="primary-button inline-button" to="/movimentacoes">Novo lançamento</Link></div>
-      </section>
-    </> : null}
-  </section>
+      {state.error ? <div className="form-alert">{state.error}</div> : null}
+      {state.loading ? (
+        <p className="loading-inline">Carregando painel...</p>
+      ) : null}
+      {data ? (
+        <>
+          <section className="overview-grid">
+            <article className="overview-card overview-card-primary">
+              <span>Saldo disponível</span>
+              <strong>
+                {formatCurrency(
+                  data.summary.projectedBalance ??
+                    data.summary.availableBalance,
+                  user.currency,
+                )}
+              </strong>
+              <small>
+                Total em contas:{" "}
+                {formatCurrency(data.summary.currentBalance, user.currency)}
+              </small>
+            </article>
+            <article className="overview-card">
+              <span>Resultado mensal</span>
+              <strong
+                className={
+                  Number(data.summary.monthlyResult) >= 0
+                    ? "income-text"
+                    : "expense-text"
+                }
+              >
+                {formatCurrency(data.summary.monthlyResult, user.currency)}
+              </strong>
+              <small>Receitas menos despesas do mês</small>
+            </article>
+          </section>
+          <section className="metric-grid">
+            <article>
+              <span>Receitas</span>
+              <strong className="income-text">
+                {formatCurrency(data.summary.monthlyIncome, user.currency)}
+              </strong>
+              <small>Previstas no mês</small>
+            </article>
+            <article>
+              <span>Despesas</span>
+              <strong className="expense-text">
+                {formatCurrency(data.summary.monthlyExpense, user.currency)}
+              </strong>
+              <small>Contas e faturas do mês</small>
+            </article>
+            <article
+              className={
+                Number(data.summary.overdueBills) > 0
+                  ? "metric-alert is-overdue"
+                  : Number(data.summary.pendingBills) > 0
+                    ? "metric-alert"
+                    : ""
+              }
+            >
+              <span>A pagar no mês</span>
+              <strong>
+                {formatCurrency(data.summary.pendingBills, user.currency)}
+              </strong>
+              {Number(data.summary.overdueBills) > 0 ? (
+                <small className="expense-text">
+                  {formatCurrency(data.summary.overdueBills, user.currency)} em
+                  atraso
+                </small>
+              ) : (
+                <small>Pendências do período</small>
+              )}
+            </article>
+            <article>
+              <span>Patrimônio líquido</span>
+              <strong>
+                {formatCurrency(data.summary.netWorth, user.currency)}
+              </strong>
+              {Number(data.summary.investedTotal) > 0 ? (
+                <small>
+                  Investido:{" "}
+                  {formatCurrency(data.summary.investedTotal, user.currency)}
+                </small>
+              ) : (
+                <small>Contas e investimentos</small>
+              )}
+            </article>
+          </section>
+          <section className="dashboard-panel">
+            <p className="eyebrow">Fluxo</p>
+            <h2>Receitas x despesas</h2>
+            <div className="bar-chart">
+              {data.monthlySeries.map((item) => (
+                <div className="bar-group" key={item.label}>
+                  <div className="bars">
+                    <i
+                      className="bar-income"
+                      style={{
+                        height: `${(Number(item.income) / max) * 100}%`,
+                      }}
+                    />
+                    <i
+                      className="bar-expense"
+                      style={{
+                        height: `${(Number(item.expense) / max) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <small>{item.label}</small>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="setup-card">
+            <div>
+              <p className="eyebrow">Ações rápidas</p>
+              <h2>Organize o próximo lançamento.</h2>
+            </div>
+            <div className="setup-actions">
+              <Link
+                className="primary-button inline-button"
+                to="/movimentacoes"
+              >
+                Novo lançamento
+              </Link>
+            </div>
+          </section>
+        </>
+      ) : null}
+    </section>
+  );
 }

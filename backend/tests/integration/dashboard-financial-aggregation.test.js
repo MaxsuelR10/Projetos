@@ -62,7 +62,7 @@ describe.sequential("agregação financeira do dashboard", () => {
     invoiceId = purchase.body.purchase.installments[0].invoice.id;
 
     const beforePayment = await dashboard();
-    expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "850", pendingBills: "350", availableBalance: "1500", monthlyResult: "650" });
+    expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "850", pendingBills: "350", availableBalance: "1500", monthlyResult: "1150" });
     expect(beforePayment.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "2000", expense: "850" });
     const october = await agent.get("/api/dashboard?month=2026-10");
     expect(october.body.summary).toMatchObject({ monthlyExpense: "70", pendingBills: "70" });
@@ -74,7 +74,7 @@ describe.sequential("agregação financeira do dashboard", () => {
     expect(completedExpense.status).toBe(200);
 
     const afterPayment = await dashboard();
-    expect(afterPayment.summary).toMatchObject({ monthlyExpense: "850", pendingBills: "0", availableBalance: "1150", monthlyResult: "300" });
-    expect(Number(afterPayment.summary.monthlyResult)).toBe(Number(afterPayment.summary.availableBalance) - Number(afterPayment.summary.monthlyExpense));
+    expect(afterPayment.summary).toMatchObject({ monthlyExpense: "850", pendingBills: "0", availableBalance: "1150", monthlyResult: "1150" });
+    expect(Number(afterPayment.summary.monthlyResult)).toBe(Number(afterPayment.summary.monthlyIncome) - Number(afterPayment.summary.monthlyExpense));
   });
 });
