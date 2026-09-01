@@ -240,7 +240,7 @@ model Subcategory {
 model Transaction {
   id            String            @id @default(uuid()) @db.Uuid
   userId        String            @db.Uuid
-  accountId     String            @db.Uuid
+  accountId     String?           @db.Uuid
   categoryId    String            @db.Uuid
   subcategoryId String?           @db.Uuid
   type          TransactionType
@@ -257,7 +257,7 @@ model Transaction {
   cardPurchaseId String?          @db.Uuid
   recurringTransactionId String?  @db.Uuid
   user          User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  account       Account           @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  account       Account?          @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
   category      Category          @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
   subcategory   Subcategory?      @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
   creditCard    CreditCard?       @relation("CardTransaction", fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)

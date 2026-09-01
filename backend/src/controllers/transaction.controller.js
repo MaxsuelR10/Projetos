@@ -3,6 +3,7 @@ import {
   createTransaction,
   getTransaction,
   listTransactions,
+  settleTransaction,
   updateTransaction,
 } from "../services/transaction.service.js";
 import { deleteTransaction } from "../services/transaction.service.js";
@@ -25,6 +26,11 @@ export async function getById(request, response) {
 
 export async function update(request, response) {
   const transaction = await updateTransaction(request.auth.userId, request.validated.params.id, request.validated.body);
+  return response.status(200).json({ transaction });
+}
+
+export async function pay(request, response) {
+  const transaction = await settleTransaction(request.auth.userId, request.validated.params.id, request.validated.body);
   return response.status(200).json({ transaction });
 }
 

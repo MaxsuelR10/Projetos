@@ -238,6 +238,9 @@ export async function getDashboard(userId, month) {
   // Financial result for the month: Total Income of the period minus Total Expenses of the period
   const monthlyResult = periodTotals.income.minus(periodTotals.expense);
 
+  const totalPendingBills = pendingAmount.plus(cardPending);
+  const paidBills = Prisma.Decimal.max(new Prisma.Decimal(0), periodTotals.expense.minus(totalPendingBills));
+
   return {
     period: `${range.year}-${String(range.month).padStart(2, "0")}`,
     summary: {
@@ -247,7 +250,8 @@ export async function getDashboard(userId, month) {
       monthlyIncome: money(periodTotals.income),
       monthlyExpense: money(periodTotals.expense),
       monthlyResult: money(monthlyResult),
-      pendingBills: money(pendingAmount.plus(cardPending)),
+      pendingBills: money(totalPendingBills),
+      paidBills: money(paidBills),
       overdueBills: money(
         new Prisma.Decimal(overdueTransactions._sum.amount || 0).plus(
           cardOverdue,

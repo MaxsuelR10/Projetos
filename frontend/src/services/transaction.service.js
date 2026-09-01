@@ -21,6 +21,11 @@ export const transactionService = {
     return response.data.transaction
   },
 
+  async pay(id, data) {
+    const response = await api.post(`/transactions/${id}/pay`, data)
+    return response.data.transaction
+  },
+
   async remove(id) {
     await api.delete(`/transactions/${id}`)
   },

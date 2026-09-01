@@ -12,7 +12,7 @@ const optionalDateSchema = dateSchema.nullable().optional();
 const optionalText = (maxLength) => z.string().trim().max(maxLength).nullable().optional();
 
 const transactionFields = {
-  accountId: idSchema,
+  accountId: idSchema.nullable().optional(),
   categoryId: idSchema,
   subcategoryId: idSchema.nullable().optional(),
   type: transactionTypeSchema,
@@ -34,10 +34,16 @@ export const transactionIdSchema = z.object({
 export const createTransactionSchema = z.object({
   body: z.object(transactionFields).strict(),
 }).superRefine(({ body }, context) => {
+  if (!body.accountId && (body.type === "INCOME" || body.paymentMethod !== "CASH")) context.addIssue({ code: "custom", path: ["body", "accountId"], message: "Selecione uma conta; somente despesas em dinheiro podem ficar sem conta" });
   if (body.paymentMethod === "CREDIT_CARD" && !body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Selecione o cartão de crédito utilizado" });
   if (body.paymentMethod === "CREDIT_CARD" && body.type !== "EXPENSE") context.addIssue({ code: "custom", path: ["body", "type"], message: "Cartão de crédito só pode ser usado em despesas" });
   if (body.paymentMethod === "CREDIT_CARD" && !/^\d{1,15}(?:\.\d{1,2})?$/.test(body.amount)) context.addIssue({ code: "custom", path: ["body", "amount"], message: "Compras no cartão aceitam no máximo dois centavos" });
   if (body.paymentMethod !== "CREDIT_CARD" && body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Cartão informado para uma forma de pagamento diferente" });
+});
+
+export const payTransactionSchema = z.object({
+  params: z.object({ id: idSchema }),
+  body: z.object({ accountId: idSchema.nullable().optional(), date: dateSchema }).strict(),
 });
 
 export const updateTransactionSchema = z.object({

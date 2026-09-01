@@ -6,6 +6,7 @@ import {
   getById,
   list,
   listTransfersHandler,
+  pay,
   remove,
   reverseTransferHandler,
   update,
@@ -18,6 +19,7 @@ import {
   createTransferSchema,
   listTransactionsSchema,
   listTransfersSchema,
+  payTransactionSchema,
   transactionIdSchema,
   updateTransactionSchema,
 } from "../validators/transaction.schemas.js";
@@ -30,6 +32,7 @@ transactionRouter.get("/", validate(listTransactionsSchema), asyncHandler(list))
 transactionRouter.post("/", validate(createTransactionSchema), asyncHandler(create));
 transactionRouter.get("/:id", validate(transactionIdSchema), asyncHandler(getById));
 transactionRouter.patch("/:id", validate(updateTransactionSchema), asyncHandler(update));
+transactionRouter.post("/:id/pay", validate(payTransactionSchema), asyncHandler(pay));
 transactionRouter.patch("/:id/cancel", validate(transactionIdSchema), asyncHandler(cancel));
 transactionRouter.delete("/:id", validate(transactionIdSchema), asyncHandler(remove));
 

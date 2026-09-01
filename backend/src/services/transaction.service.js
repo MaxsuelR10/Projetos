@@ -102,7 +102,7 @@ export async function getTransaction(userId, id) {
 
 export async function createTransaction(userId, data) {
   const transaction = await prisma.$transaction(async (db) => {
-    await findActiveAccount(db, userId, data.accountId);
+    if (data.accountId) await findActiveAccount(db, userId, data.accountId);
     await validateClassification(db, userId, data);
     const isCardPurchase = data.paymentMethod === "CREDIT_CARD";
     const status = isCardPurchase ? "COMPLETED" : (data.status ?? "PENDING");
@@ -119,7 +119,7 @@ export async function createTransaction(userId, data) {
         cardPurchaseId: purchase?.id || null, settledAt: affectsBalance(status, data.paymentMethod) ? new Date() : null,
       }, include: relationSelect,
     });
-    if (affectsBalance(status, data.paymentMethod)) await applyBalance(db, data.accountId, data.type, data.amount);
+    if (data.accountId && affectsBalance(status, data.paymentMethod)) await applyBalance(db, data.accountId, data.type, data.amount);
     return created;
   });
   return serializeTransaction(transaction);
@@ -132,19 +132,23 @@ export async function updateTransaction(userId, id, data) {
     if (existing.status === "CANCELLED") throw new AppError("Um lan\u00e7amento cancelado n\u00e3o pode ser alterado", 409, "TRANSACTION_CANCELLED");
 
     const next = {
-      accountId: data.accountId ?? existing.accountId,
+      accountId: data.accountId === undefined ? existing.accountId : data.accountId,
       categoryId: data.categoryId ?? existing.categoryId,
       subcategoryId: data.subcategoryId === undefined ? existing.subcategoryId : data.subcategoryId,
       type: data.type ?? existing.type,
       amount: data.amount ?? existing.amount.toString(),
       status: data.status ?? existing.status,
     };
-    await findActiveAccount(db, userId, next.accountId);
+    const nextPaymentMethod = data.paymentMethod ?? existing.paymentMethod;
+    if (!next.accountId && (next.type === "INCOME" || nextPaymentMethod !== "CASH")) {
+      throw new AppError("Somente despesas em dinheiro podem ficar sem conta", 400, "ACCOUNT_REQUIRED_FOR_PAYMENT_METHOD");
+    }
+    if (next.accountId) await findActiveAccount(db, userId, next.accountId);
     await validateClassification(db, userId, next);
 
     if (existing.cardPurchaseId && (data.paymentMethod !== undefined || data.creditCardId !== undefined || data.amount !== undefined || data.date !== undefined || data.categoryId !== undefined || data.subcategoryId !== undefined)) throw new AppError("Edite compras de cartao na tela de Cartoes", 409, "CARD_PURCHASE_EDIT_PROTECTED");
     if (data.paymentMethod === "CREDIT_CARD" && existing.paymentMethod !== "CREDIT_CARD") throw new AppError("Para registrar uma compra no cartao, crie um novo lanÃ§amento", 409, "CARD_PAYMENT_METHOD_EDIT_PROTECTED");
-    if (affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
+    if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
     const updated = await db.transaction.update({
       where: { id: existing.id },
       data: {
@@ -161,7 +165,36 @@ export async function updateTransaction(userId, id, data) {
         ...(data.notes !== undefined ? { notes: nullable(data.notes) } : {}),
       }, include: relationSelect,
     });
-    if (affectsBalance(next.status, data.paymentMethod ?? existing.paymentMethod)) await applyBalance(db, next.accountId, next.type, next.amount);
+    if (next.accountId && affectsBalance(next.status, nextPaymentMethod)) await applyBalance(db, next.accountId, next.type, next.amount);
+    return updated;
+  });
+  return serializeTransaction(transaction);
+}
+
+// Settlement is intentionally distinct from editing: it preserves the original
+// competence date and creates exactly one account impact for one payment.
+export async function settleTransaction(userId, id, data) {
+  const transaction = await prisma.$transaction(async (db) => {
+    const existing = await db.transaction.findFirst({ where: { id, userId } });
+    if (!existing) throw new AppError("Lançamento não encontrado", 404, "TRANSACTION_NOT_FOUND");
+    if (existing.status === "CANCELLED") throw new AppError("Um lançamento cancelado não pode ser pago", 409, "TRANSACTION_CANCELLED");
+    if (existing.status === "COMPLETED") throw new AppError("Este lançamento já foi pago", 409, "TRANSACTION_ALREADY_PAID");
+    if (existing.paymentMethod === "CREDIT_CARD" || existing.cardPurchaseId) {
+      throw new AppError("Compras no cartão são quitadas pelo pagamento da fatura", 409, "CARD_PURCHASE_PAY_PROTECTED");
+    }
+
+    const accountId = data.accountId === undefined ? existing.accountId : data.accountId;
+    if (!accountId && existing.paymentMethod !== "CASH") {
+      throw new AppError("Selecione a conta usada no pagamento", 400, "PAYMENT_ACCOUNT_REQUIRED");
+    }
+    if (accountId) await findActiveAccount(db, userId, accountId);
+
+    const updated = await db.transaction.update({
+      where: { id: existing.id },
+      data: { accountId, status: "COMPLETED", settledAt: asDate(data.date) },
+      include: relationSelect,
+    });
+    if (accountId) await applyBalance(db, accountId, existing.type, existing.amount.toString());
     return updated;
   });
   return serializeTransaction(transaction);
@@ -173,7 +206,7 @@ export async function cancelTransaction(userId, id) {
     if (!existing) throw new AppError("Lan\u00e7amento n\u00e3o encontrado", 404, "TRANSACTION_NOT_FOUND");
     if (existing.status === "CANCELLED") return;
     if (existing.cardPurchaseId) await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
-    if (affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
+    if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
     await db.transaction.update({ where: { id }, data: { status: "CANCELLED", settledAt: null } });
   });
 }
@@ -185,8 +218,18 @@ export async function deleteTransaction(userId, id) {
     if (existing.creditCardInvoiceId) {
       throw new AppError("O pagamento de uma fatura não pode ser excluído por esta tela", 409, "INVOICE_PAYMENT_PROTECTED");
     }
+    // Paid records are financial history. Keep the endpoint backwards-compatible,
+    // but turn a deletion request into a reversible cancellation instead.
+    if (existing.status === "COMPLETED") {
+      if (existing.cardPurchaseId) await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
+      if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) {
+        await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
+      }
+      await db.transaction.update({ where: { id: existing.id }, data: { status: "CANCELLED", settledAt: null } });
+      return;
+    }
     if (existing.cardPurchaseId) await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
-    if (affectsBalance(existing.status, existing.paymentMethod)) {
+    if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) {
       await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
     }
     await db.transaction.delete({ where: { id: existing.id } });

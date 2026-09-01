@@ -9,6 +9,7 @@ let userId;
 let accountId;
 let expenseCategoryId;
 let pendingId;
+const pendingIsAlreadyDue = new Date("2026-08-31T00:00:00.000Z") <= new Date();
 
 async function cleanup() {
   if (!userId) return;
@@ -36,7 +37,11 @@ describe.sequential("visibilidade de lancamentos pendentes", () => {
     const movements = await agent.get("/api/transactions?limit=20");
     expect(movements.body.transactions.find((item) => item.id === pendingId)).toMatchObject({ status: "PENDING", amount: "865.67" });
     const accountAfterCreation = await agent.get(`/api/accounts/${accountId}`);
-    expect(accountAfterCreation.body.account).toMatchObject({ currentBalance: "0", projectedBalance: "0", pendingCommitments: "0" });
+    expect(accountAfterCreation.body.account).toMatchObject({
+      currentBalance: "0",
+      projectedBalance: pendingIsAlreadyDue ? "-865.67" : "0",
+      pendingCommitments: pendingIsAlreadyDue ? "865.67" : "0",
+    });
     const dashboard = await agent.get("/api/dashboard?month=2026-08");
     expect(dashboard.body.summary).toMatchObject({ pendingBills: "865.67", totalCardUsed: "0" });
 
