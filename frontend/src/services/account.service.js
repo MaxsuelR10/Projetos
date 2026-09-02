@@ -21,6 +21,11 @@ export const accountService = {
     return response.data.account
   },
 
+  async listBalanceAdjustments(id) {
+    const response = await api.get(`/accounts/${id}/balance-adjustments`)
+    return response.data.adjustments
+  },
+
   async remove(id) {
     await api.delete(`/accounts/${id}`)
   },

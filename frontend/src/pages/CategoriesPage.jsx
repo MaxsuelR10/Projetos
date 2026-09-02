@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../components/feedback/EmptyState.jsx'
 import { categoryService } from '../services/category.service.js'
 import { getApiError } from '../utils/get-api-error.js'
+import { useConfirm } from '../hooks/useConfirm.js'
 
 const emptyCategoryForm = { name: '', type: 'EXPENSE', color: '#EF4444', icon: '' }
 const emptySubcategoryForm = { name: '', color: '#64748B', icon: '' }
 
 export function CategoriesPage() {
+  const requestConfirmation = useConfirm()
   const [categories, setCategories] = useState([])
   const [activeType, setActiveType] = useState('EXPENSE')
   const [isLoading, setIsLoading] = useState(true)
@@ -138,7 +140,7 @@ export function CategoriesPage() {
   }
 
   async function removeCategory(category) {
-    if (!window.confirm(`Excluir a categoria "${category.name}"?`)) return
+    if (!(await requestConfirmation({ title: 'Excluir categoria?', message: `A categoria “${category.name}” será excluída. Esta ação não poderá ser desfeita.`, confirmLabel: 'Excluir categoria', destructive: true, icon: '!' }))) return
     try {
       await categoryService.remove(category.id)
       await loadCategories()
@@ -153,7 +155,7 @@ export function CategoriesPage() {
   }
 
   async function removeSubcategory(category, subcategory) {
-    if (!window.confirm(`Excluir a subcategoria "${subcategory.name}"?`)) return
+    if (!(await requestConfirmation({ title: 'Excluir subcategoria?', message: `A subcategoria “${subcategory.name}” será excluída. Esta ação não poderá ser desfeita.`, confirmLabel: 'Excluir subcategoria', destructive: true, icon: '!' }))) return
     try {
       await categoryService.removeSubcategory(category.id, subcategory.id)
       await loadCategories()

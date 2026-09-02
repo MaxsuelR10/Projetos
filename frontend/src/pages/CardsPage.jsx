@@ -7,6 +7,7 @@ import { categoryService } from '../services/category.service.js'
 import { formatCurrency, parseCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
+import { useConfirm } from '../hooks/useConfirm.js'
 
 const today = new Date().toISOString().slice(0, 10)
 const emptyCard = { name: '', institution: '', brand: '', type: 'CREDIT', creditLimit: '', closingDay: '25', dueDay: '5', color: '#263B71' }
@@ -17,6 +18,7 @@ function formatDate(value) { return new Intl.DateTimeFormat('pt-BR', { timeZone:
 
 export function CardsPage() {
   const { user } = useAuth()
+  const requestConfirmation = useConfirm()
   const [cards, setCards] = useState([])
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
@@ -52,7 +54,10 @@ export function CardsPage() {
       setError('')
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsLoading(false) }
   }, [loadDetail, selectedId])
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const timerId = window.setTimeout(() => { void load() }, 0)
+    return () => window.clearTimeout(timerId)
+  }, [load])
 
   function changeCard(event) { setCardForm((current) => ({ ...current, [event.target.name]: event.target.value })) }
   function changePurchase(event) { const { name, value } = event.target; setPurchaseForm((current) => ({ ...current, [name]: value, ...(name === 'categoryId' ? { subcategoryId: '' } : {}) })) }
@@ -75,12 +80,12 @@ export function CardsPage() {
   }
   async function pay(invoice) {
     if (!payment.accountId || !payment.categoryId) { setError('Selecione a conta e a categoria para registrar o pagamento.'); return }
-    if (!window.confirm(`Pagar a fatura ${invoiceLabel(invoice)} no valor de ${formatCurrency(invoice.totalAmount, user.currency)}?`)) return
+    if (!(await requestConfirmation({ title: 'Pagar fatura?', message: `A fatura ${invoiceLabel(invoice)} no valor de ${formatCurrency(invoice.totalAmount, user.currency)} será debitada da conta selecionada.`, confirmLabel: 'Pagar fatura' }))) return
     setIsSubmitting(true); setError('')
     try { await cardService.payInvoice(invoice.id, payment); await load() } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
   }
   async function cancelPurchase(purchase) {
-    if (!window.confirm(`Cancelar a compra "${purchase.description}"?`)) return
+    if (!(await requestConfirmation({ title: 'Cancelar compra?', message: `A compra “${purchase.description}” e suas parcelas pendentes serão canceladas.`, confirmLabel: 'Cancelar compra', destructive: true, icon: '!' }))) return
     try { await cardService.cancelPurchase(purchase.id); await load() } catch (requestError) { setError(getApiError(requestError)) }
   }
 

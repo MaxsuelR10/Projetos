@@ -5,10 +5,12 @@ import { accountService } from "../services/account.service.js";
 import {
   formatAccountType,
   formatCurrency,
+  formatDate,
   parseCurrency,
 } from "../utils/formatters.js";
 import { getApiError } from "../utils/get-api-error.js";
 import { CurrencyInput } from "../components/forms/CurrencyInput.jsx";
+import { useConfirm } from "../hooks/useConfirm.js";
 
 const accountTypes = [
   ["CHECKING", "Conta corrente"],
@@ -31,6 +33,7 @@ const emptyForm = {
 
 export function AccountsPage() {
   const { user } = useAuth();
+  const requestConfirmation = useConfirm();
   const [accounts, setAccounts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -38,6 +41,7 @@ export function AccountsPage() {
   const [editingAccount, setEditingAccount] = useState(null);
   const [balanceAccount, setBalanceAccount] = useState(null);
   const [balance, setBalance] = useState("");
+  const [balanceHistory, setBalanceHistory] = useState([]);
   const [form, setForm] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -116,12 +120,17 @@ export function AccountsPage() {
     setIsFormOpen(false);
     setBalanceAccount(account);
     setBalance(account.currentBalance);
+    setBalanceHistory([]);
     setError("");
+    accountService.listBalanceAdjustments(account.id)
+      .then(setBalanceHistory)
+      .catch((requestError) => setError(getApiError(requestError)));
   }
 
   function closeBalanceEditor() {
     setBalanceAccount(null);
     setBalance("");
+    setBalanceHistory([]);
     setError("");
   }
 
@@ -137,9 +146,11 @@ export function AccountsPage() {
           Number(nextBalance) !== Number(editingAccount.currentBalance);
         if (
           balanceChanged &&
-          !window.confirm(
-            `Alterar o saldo atual de ${formatCurrency(editingAccount.currentBalance, user.currency)} para ${formatCurrency(nextBalance, user.currency)}?`,
-          )
+          !(await requestConfirmation({
+            title: "Alterar saldo?",
+            message: `O saldo atual será alterado de ${formatCurrency(editingAccount.currentBalance, user.currency)} para ${formatCurrency(nextBalance, user.currency)}. Este ajuste ficará registrado no histórico.`,
+            confirmLabel: "Confirmar alteração",
+          }))
         )
           return;
         await accountService.update(editingAccount.id, {
@@ -180,7 +191,7 @@ export function AccountsPage() {
   async function submitBalance(event) {
     event.preventDefault();
     const nextBalance = parseCurrency(balance);
-    if (!nextBalance) {
+    if (nextBalance === "") {
       setError("Informe um saldo vÃ¡lido.");
       return;
     }
@@ -189,9 +200,11 @@ export function AccountsPage() {
       return;
     }
     if (
-      !window.confirm(
-        `Alterar o saldo atual de ${formatCurrency(balanceAccount.currentBalance, user.currency)} para ${formatCurrency(nextBalance, user.currency)}?`,
-      )
+      !(await requestConfirmation({
+        title: "Alterar saldo?",
+        message: `O saldo atual será alterado de ${formatCurrency(balanceAccount.currentBalance, user.currency)} para ${formatCurrency(nextBalance, user.currency)}. Este ajuste ficará registrado no histórico.`,
+        confirmLabel: "Confirmar alteração",
+      }))
     )
       return;
 
@@ -202,14 +215,14 @@ export function AccountsPage() {
       closeBalanceEditor();
       await loadAccounts();
     } catch (requestError) {
-      setError(getApiError(requestError));
+      setError(getApiError(requestError, "Não foi possível atualizar o saldo. Tente novamente."));
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function remove(account) {
-    if (!window.confirm(`Excluir a conta "${account.name}"?`)) return;
+    if (!(await requestConfirmation({ title: "Excluir conta?", message: `A conta “${account.name}” será excluída. Esta ação não poderá ser desfeita.`, confirmLabel: "Excluir conta", destructive: true, icon: "!" }))) return;
 
     try {
       await accountService.remove(account.id);
@@ -252,11 +265,11 @@ export function AccountsPage() {
 
       <section className="balance-banner">
         <span>Saldo disponível</span>
-        <strong>{formatCurrency(totalBalance, user.currency)}</strong>
+        <strong>{formatCurrency(totalCurrentBalance, user.currency)}</strong>
         <small>
-          Total em contas: {formatCurrency(totalCurrentBalance, user.currency)}{" "}
+          Após compromissos vencidos: {formatCurrency(totalBalance, user.currency)}{" "}
           {totalCurrentBalance !== totalBalance
-            ? `· deduzindo compromissos vencidos`
+            ? `· projeção, não saldo real`
             : ""}
         </small>
       </section>
@@ -371,6 +384,17 @@ export function AccountsPage() {
                   : "Criar conta"}
             </button>
           </form>
+          {balanceHistory.length ? (
+            <div className="balance-history">
+              <h3>Histórico de ajustes</h3>
+              {balanceHistory.map((adjustment) => (
+                <div key={adjustment.id}>
+                  <span>{formatDate(adjustment.createdAt)}</span>
+                  <strong>{formatCurrency(adjustment.previousBalance, user.currency)} → {formatCurrency(adjustment.newBalance, user.currency)}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

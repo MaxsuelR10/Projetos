@@ -134,6 +134,20 @@ describe.sequential("contas e categorias", () => {
     expect(dashboard.status).toBe(200);
     expect(dashboard.body.summary.availableBalance).toBe("1500");
 
+    const zero = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "0.00" });
+    expect(zero.status).toBe(200);
+    expect(zero.body.account).toMatchObject({ initialBalance: "1250.5", currentBalance: "0" });
+    const negative = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "-25.75" });
+    expect(negative.status).toBe(200);
+    expect(negative.body.account.currentBalance).toBe("-25.75");
+    expect(await prisma.transaction.count({ where: { userId: primaryUserId } })).toBe(0);
+    const history = await primaryAgent.get(`/api/accounts/${primaryAccountId}/balance-adjustments`);
+    expect(history.status).toBe(200);
+    expect(history.body.adjustments).toHaveLength(3);
+    expect(history.body.adjustments[0]).toMatchObject({ previousBalance: "0", newBalance: "-25.75", difference: "-25.75" });
+
+    await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "1500" });
+
     const forbidden = await primaryAgent.patch(`/api/accounts/${secondaryAccountId}/balance`).send({ currentBalance: "1" });
     expect(forbidden.status).toBe(404);
   });

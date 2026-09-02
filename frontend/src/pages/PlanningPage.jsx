@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { categoryService } from '../services/category.service.js'
 import { planningService } from '../services/planning.service.js'
 import { useAuth } from '../hooks/useAuth.js'
@@ -36,7 +36,7 @@ export function PlanningPage() {
   const [goalAmounts, setGoalAmounts] = useState({ targetAmount: '', currentAmount: '' })
   const [error, setError] = useState('')
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       const [categoryData, budgetData, goalData] = await Promise.all([categoryService.list('active'), planningService.budgets(year, month), planningService.goals()])
       setCategories(categoryData.filter((item) => item.type === 'EXPENSE'))
@@ -44,9 +44,9 @@ export function PlanningPage() {
       setGoals(goalData)
       setError('')
     } catch (requestError) { setError(getApiError(requestError)) }
-  }
+  }, [month, year])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { const timerId = window.setTimeout(() => { void load() }, 0); return () => window.clearTimeout(timerId) }, [load])
 
   function closeForm() {
     setOpenForm('')

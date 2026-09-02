@@ -71,25 +71,20 @@ export function HomePage() {
 
       {data ? (
         <>
-          {/* Quanto tenho -> Quanto sobra */}
+          {/* Saldo real e resultado em regime de caixa */}
           <section className="overview-grid">
             <article className="overview-card overview-card-primary">
-              <span>Saldo disponível (projetado)</span>
+              <span>Saldo disponível</span>
               <strong>
-                {formatCurrency(
-                  data.summary.projectedBalance ??
-                    data.summary.availableBalance,
-                  user.currency,
-                )}
+                {formatCurrency(data.summary.currentBalance, user.currency)}
               </strong>
               <small>
-                Total em contas:{" "}
-                {formatCurrency(data.summary.currentBalance, user.currency)}
+                Após compromissos vencidos: {formatCurrency(data.summary.projectedBalance, user.currency)}
               </small>
             </article>
 
             <article className="overview-card">
-              <span>Resultado do mês (sobra)</span>
+              <span>Resultado do mês · caixa</span>
               <strong
                 className={
                   Number(data.summary.monthlyResult) >= 0
@@ -102,8 +97,8 @@ export function HomePage() {
               </strong>
               <small>
                 {Number(data.summary.monthlyResult) >= 0
-                  ? "Superávit (Receitas > Despesas)"
-                  : "Déficit (Despesas > Receitas)"}
+                  ? "Recebimentos menos pagamentos"
+                  : "Pagamentos superaram recebimentos"}
               </small>
             </article>
           </section>
@@ -111,19 +106,19 @@ export function HomePage() {
           {/* Quanto entrou -> Quanto saiu -> Quanto a pagar -> Quanto já pago -> Patrimônio */}
           <section className="metric-grid metric-grid-5">
             <article>
-              <span>Quanto entrou (Receitas)</span>
+              <span>Quanto entrou</span>
               <strong className="income-text">
                 {formatCurrency(data.summary.monthlyIncome, user.currency)}
               </strong>
-              <small>Entradas do mês</small>
+              <small>Receitas recebidas no mês</small>
             </article>
 
             <article>
-              <span>Quanto saiu (Despesas)</span>
+              <span>Quanto saiu</span>
               <strong className="expense-text">
                 {formatCurrency(data.summary.monthlyExpense, user.currency)}
               </strong>
-              <small>Despesas e faturas do mês</small>
+              <small>Despesas e faturas pagas no mês</small>
             </article>
 
             <article

@@ -11,6 +11,7 @@ import { formatCurrency, parseCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 import { CategorySelect } from '../components/forms/CategorySelect.jsx'
+import { useConfirm } from '../hooks/useConfirm.js'
 
 const today = new Date().toISOString().slice(0, 10)
 const initialMovement = {
@@ -65,6 +66,7 @@ function paymentMethodLabel(value) {
 
 export function TransactionsPage() {
   const { user } = useAuth()
+  const requestConfirmation = useConfirm()
   const [mode, setMode] = useState('movement')
   const [movement, setMovement] = useState(initialMovement)
   const [transfer, setTransfer] = useState(initialTransfer)
@@ -103,7 +105,8 @@ export function TransactionsPage() {
   }, [])
 
   useEffect(() => {
-    load()
+    const timerId = window.setTimeout(() => { void load() }, 0)
+    return () => window.clearTimeout(timerId)
   }, [load])
 
   // Clear success messages after 4 seconds
@@ -315,7 +318,7 @@ export function TransactionsPage() {
   }
 
   async function cancel(item) {
-    if (!window.confirm(`Cancelar o lançamento "${item.description}"? Ele continuará disponível no histórico.`)) return
+    if (!(await requestConfirmation({ title: 'Cancelar lançamento?', message: `O lançamento “${item.description}” será cancelado e continuará disponível no histórico.`, confirmLabel: 'Cancelar lançamento', destructive: true, icon: '!' }))) return
     try {
       await transactionService.cancel(item.id)
       setSuccessMessage('Lançamento cancelado e preservado no histórico.')
@@ -327,7 +330,7 @@ export function TransactionsPage() {
   }
 
   async function reverse(item) {
-    if (!window.confirm(`Estornar a transferência de ${formatCurrency(item.amount, user.currency)}?`)) return
+    if (!(await requestConfirmation({ title: 'Estornar transferência?', message: `A transferência de ${formatCurrency(item.amount, user.currency)} será revertida nas duas contas.`, confirmLabel: 'Estornar transferência', destructive: true, icon: '!' }))) return
     try {
       await transferService.reverse(item.id)
       setSuccessMessage('Transferência estornada com sucesso.')

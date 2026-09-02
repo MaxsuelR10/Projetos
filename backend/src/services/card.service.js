@@ -221,10 +221,11 @@ export async function payInvoice(userId, id, data) {
     if (!account) throw new AppError("Conta ativa não encontrada", 404, "ACCOUNT_NOT_FOUND");
     const category = await db.category.findFirst({ where: { id: data.categoryId, userId, type: "EXPENSE", isActive: true } });
     if (!category) throw new AppError("Categoria de despesa ativa não encontrada", 404, "CATEGORY_NOT_FOUND");
-    const transaction = await db.transaction.create({ data: { userId, accountId: account.id, categoryId: category.id, type: "EXPENSE", description: `Pagamento da fatura ${existing.creditCard.name} ${String(existing.referenceMonth).padStart(2, "0")}/${existing.referenceYear}`, amount: existing.totalAmount, date: asDate(data.date), status: "COMPLETED", settledAt: new Date(), paymentMethod: data.paymentMethod || "PIX", notes: nullable(data.notes), creditCardInvoiceId: existing.id } });
+    const paymentDate = asDate(data.date);
+    const transaction = await db.transaction.create({ data: { userId, accountId: account.id, categoryId: category.id, type: "EXPENSE", description: `Pagamento da fatura ${existing.creditCard.name} ${String(existing.referenceMonth).padStart(2, "0")}/${existing.referenceYear}`, amount: existing.totalAmount, date: paymentDate, status: "COMPLETED", settledAt: paymentDate, paymentMethod: data.paymentMethod || "PIX", notes: nullable(data.notes), creditCardInvoiceId: existing.id } });
     await db.account.update({ where: { id: account.id }, data: { currentBalance: { decrement: existing.totalAmount } } });
     await db.cardInstallment.updateMany({ where: { userId, invoiceId: existing.id, status: "PENDING" }, data: { status: "PAID" } });
-    return db.creditCardInvoice.update({ where: { id: existing.id }, data: { status: "PAID", paidAt: new Date() }, include: { paymentTransaction: { select: { id: true, account: { select: { name: true } } } } } });
+    return db.creditCardInvoice.update({ where: { id: existing.id }, data: { status: "PAID", paidAt: paymentDate }, include: { paymentTransaction: { select: { id: true, account: { select: { name: true } } } } } });
   });
   return serializeInvoice(invoice);
 }

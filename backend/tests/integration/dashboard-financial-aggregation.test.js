@@ -33,7 +33,7 @@ async function cleanup() {
   ]);
 }
 
-describe.sequential("agregação financeira do dashboard", () => {
+describe.sequential("agregação financeira em regime de caixa do dashboard", () => {
   afterAll(async () => { await cleanup(); await prisma.$disconnect(); });
 
   it("usa a mesma fonte para cards, gráfico, a pagar e resultado mensal", async () => {
@@ -62,11 +62,11 @@ describe.sequential("agregação financeira do dashboard", () => {
     invoiceId = purchase.body.purchase.installments[0].invoice.id;
 
     const beforePayment = await dashboard();
-    expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "850", pendingBills: "350", availableBalance: "1500", monthlyResult: "1150" });
-    expect(beforePayment.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "2000", expense: "850" });
+    expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "500", paidBills: "500", pendingBills: "350", availableBalance: "1500", monthlyResult: "1500" });
+    expect(beforePayment.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "2000", expense: "500" });
     const october = await agent.get("/api/dashboard?month=2026-10");
-    expect(october.body.summary).toMatchObject({ monthlyExpense: "70", pendingBills: "70" });
-    expect(october.body.monthlySeries.at(-1)).toMatchObject({ label: "10/2026", expense: "70" });
+    expect(october.body.summary).toMatchObject({ monthlyExpense: "0", paidBills: "0", pendingBills: "70" });
+    expect(october.body.monthlySeries.at(-1)).toMatchObject({ label: "10/2026", expense: "0" });
 
     const paidInvoice = await agent.post(`/api/invoices/${invoiceId}/pay`).send({ accountId, categoryId: expenseCategoryId, date: "2026-09-27", paymentMethod: "PIX" });
     expect(paidInvoice.status).toBe(200);

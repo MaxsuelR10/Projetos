@@ -176,8 +176,9 @@ describe.sequential("resultado mensal do dashboard", () => {
     expect(await dashboard()).toMatchObject({
       availableBalance: "4410.33",
       monthlyIncome: "3000",
-      monthlyExpense: "1365.67",
-      monthlyResult: "1634.33",
+      monthlyExpense: "865.67",
+      monthlyResult: "2134.33",
+      pendingBills: "500",
     });
 
     const paid = await agent

@@ -4,6 +4,7 @@ import {
   deleteAccount,
   getAccount,
   listAccounts,
+  listAccountBalanceAdjustments,
   updateAccount,
 } from "../services/account.service.js";
 
@@ -38,6 +39,14 @@ export async function adjustBalance(request, response) {
     request.validated.body.currentBalance,
   );
   return response.status(200).json({ account });
+}
+
+export async function listBalanceAdjustments(request, response) {
+  const adjustments = await listAccountBalanceAdjustments(
+    request.auth.userId,
+    request.validated.params.id,
+  );
+  return response.status(200).json({ adjustments });
 }
 
 export async function remove(request, response) {

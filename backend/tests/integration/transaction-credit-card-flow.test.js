@@ -116,7 +116,7 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
     expect(invoices.body.invoices[0].totalAmount).toBe("120");
   });
 
-  it("gera parcelas pelo lançamento e considera somente a competência da fatura no dashboard", async () => {
+  it("gera parcelas na fatura sem tratá-las como saída de caixa antes do pagamento", async () => {
     const created = await agent
       .post("/api/transactions")
       .send({
@@ -148,18 +148,21 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
 
     const august = await agent.get("/api/dashboard?month=2026-08");
     expect(august.body.summary).toMatchObject({
-      monthlyExpense: "420",
-      monthlyResult: "-420",
+      monthlyExpense: "0",
+      monthlyResult: "0",
+      pendingBills: "420",
     });
     const september = await agent.get("/api/dashboard?month=2026-09");
     expect(september.body.summary).toMatchObject({
-      monthlyExpense: "300",
-      monthlyResult: "-300",
+      monthlyExpense: "0",
+      monthlyResult: "0",
+      pendingBills: "300",
     });
     const october = await agent.get("/api/dashboard?month=2026-10");
     expect(october.body.summary).toMatchObject({
-      monthlyExpense: "300",
-      monthlyResult: "-300",
+      monthlyExpense: "0",
+      monthlyResult: "0",
+      pendingBills: "300",
     });
   });
 });

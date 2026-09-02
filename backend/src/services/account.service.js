@@ -147,6 +147,21 @@ export async function adjustAccountBalance(userId, id, currentBalance) {
   return serializeAccount(updatedAccount);
 }
 
+export async function listAccountBalanceAdjustments(userId, id) {
+  await findAccount(userId, id);
+  const adjustments = await prisma.accountBalanceAdjustment.findMany({
+    where: { userId, accountId: id },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  return adjustments.map(({ userId: _userId, ...item }) => ({
+    ...item,
+    previousBalance: item.previousBalance.toString(),
+    newBalance: item.newBalance.toString(),
+    difference: item.difference.toString(),
+  }));
+}
+
 export async function deleteAccount(userId, id) {
   const account = await findAccount(userId, id);
 

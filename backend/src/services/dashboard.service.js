@@ -4,7 +4,6 @@ import {
   monthBounds,
   transactionCompetenceFilter,
 } from "../utils/financial-competence.js";
-import { generateRecurrences } from "./recurrence.service.js";
 
 function money(value) {
   return (value || new Prisma.Decimal(0)).toString();
@@ -14,13 +13,16 @@ function add(map, key, amount) {
   map.set(key, (map.get(key) || new Prisma.Decimal(0)).plus(amount));
 }
 
-function validPeriodTransactions(userId, range) {
+function cashPeriodTransactions(userId, range) {
+  const period = { gte: range.start, lt: range.end };
   return {
     userId,
-    status: { not: "CANCELLED" },
+    status: "COMPLETED",
     cardPurchaseId: null,
-    creditCardInvoiceId: null,
-    ...transactionCompetenceFilter(range),
+    OR: [
+      { settledAt: period },
+      { settledAt: null, date: period },
+    ],
   };
 }
 
@@ -49,23 +51,11 @@ function dueNonCardCommitment() {
   };
 }
 
-async function getPeriodTotals(userId, range) {
-  const [transactions, installments] = await Promise.all([
-    prisma.transaction.findMany({
-      where: validPeriodTransactions(userId, range),
-      include: { category: { select: { name: true } } },
-    }),
-    prisma.cardInstallment.findMany({
-      where: {
-        userId,
-        status: { not: "CANCELLED" },
-        invoice: { referenceYear: range.year, referenceMonth: range.month },
-      },
-      include: {
-        purchase: { include: { category: { select: { name: true } } } },
-      },
-    }),
-  ]);
+async function getCashPeriodTotals(userId, range) {
+  const transactions = await prisma.transaction.findMany({
+    where: cashPeriodTransactions(userId, range),
+    include: { category: { select: { name: true } } },
+  });
 
   let income = new Prisma.Decimal(0);
   let expense = new Prisma.Decimal(0);
@@ -79,25 +69,11 @@ async function getPeriodTotals(userId, range) {
     }
   }
 
-  // A card purchase's transaction is excluded above. Its installment is the single
-  // financial representation for the invoice month, including after the invoice is paid.
-  for (const installment of installments) {
-    expense = expense.plus(installment.amount);
-    add(categories, installment.purchase.category.name, installment.amount);
-  }
-
   return { income, expense, categories };
 }
 
 export async function getDashboard(userId, month) {
   const range = monthBounds(month);
-
-  // Auto-generate active recurring transactions up to the end of the requested month
-  try {
-    await generateRecurrences(userId, range.end.toISOString().slice(0, 10));
-  } catch (_err) {
-    // If recurrence generation encounters non-critical error, continue loading dashboard
-  }
 
   const seriesRanges = Array.from({ length: 6 }, (_, index) => {
     const date = new Date(Date.UTC(range.year, range.month - 6 + index, 1));
@@ -116,7 +92,7 @@ export async function getDashboard(userId, month) {
     cards,
     upcomingInvoices,
   ] = await Promise.all([
-    getPeriodTotals(userId, range),
+    getCashPeriodTotals(userId, range),
     prisma.account.findMany({
       where: { userId, isActive: true },
       select: { id: true, name: true, currentBalance: true, color: true },
@@ -164,7 +140,7 @@ export async function getDashboard(userId, month) {
   const [seriesTotals, cardUsage, commitments, overdueTransactions] =
     await Promise.all([
       Promise.all(
-        seriesRanges.map((seriesRange) => getPeriodTotals(userId, seriesRange)),
+        seriesRanges.map((seriesRange) => getCashPeriodTotals(userId, seriesRange)),
       ),
       Promise.all(
         cards.map(async (card) => {
@@ -235,11 +211,11 @@ export async function getDashboard(userId, month) {
   );
   const netWorth = balance.plus(inactiveBalance).plus(investedTotal);
 
-  // Financial result for the month: Total Income of the period minus Total Expenses of the period
+  // Cash-basis result: money actually received minus money actually paid in the period.
   const monthlyResult = periodTotals.income.minus(periodTotals.expense);
 
   const totalPendingBills = pendingAmount.plus(cardPending);
-  const paidBills = Prisma.Decimal.max(new Prisma.Decimal(0), periodTotals.expense.minus(totalPendingBills));
+  const paidBills = periodTotals.expense;
 
   return {
     period: `${range.year}-${String(range.month).padStart(2, "0")}`,

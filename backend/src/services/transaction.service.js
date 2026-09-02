@@ -116,7 +116,8 @@ export async function createTransaction(userId, data) {
         type: data.type, description: data.description, amount: data.amount, date: asDate(data.date),
         dueDate: data.dueDate ? asDate(data.dueDate) : null, status, paymentMethod: data.paymentMethod || null,
         notes: nullable(data.notes), creditCardId: isCardPurchase ? data.creditCardId : null,
-        cardPurchaseId: purchase?.id || null, settledAt: affectsBalance(status, data.paymentMethod) ? new Date() : null,
+        cardPurchaseId: purchase?.id || null,
+        settledAt: affectsBalance(status, data.paymentMethod) ? asDate(data.date) : null,
       }, include: relationSelect,
     });
     if (data.accountId && affectsBalance(status, data.paymentMethod)) await applyBalance(db, data.accountId, data.type, data.amount);

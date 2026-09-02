@@ -81,11 +81,13 @@ enum RecurrenceStatus {
   PAUSED
   COMPLETED
 }
+
 enum RecurrenceEndMode {
   NO_END_DATE
   END_DATE
   DURATION
 }
+
 enum RecurrenceDurationUnit {
   DAYS
   WEEKS
@@ -98,6 +100,7 @@ enum GoalStatus {
   COMPLETED
   ARCHIVED
 }
+
 enum InvestmentType {
   CDB
   TESOURO
@@ -112,6 +115,7 @@ enum InvestmentType {
   FIXED_INCOME
   OTHER
 }
+
 enum YieldType {
   CDI_PERCENT
   SELIC
@@ -122,53 +126,53 @@ enum YieldType {
 }
 
 model User {
-  id           String        @id @default(uuid()) @db.Uuid
-  name         String        @db.VarChar(120)
-  email        String        @unique @db.VarChar(255)
-  passwordHash String        @db.VarChar(255)
-  currency     String        @default("BRL") @db.VarChar(3)
-  accounts     Account[]
+  id                        String                     @id @default(uuid()) @db.Uuid
+  name                      String                     @db.VarChar(120)
+  email                     String                     @unique @db.VarChar(255)
+  passwordHash              String                     @db.VarChar(255)
+  currency                  String                     @default("BRL") @db.VarChar(3)
+  accounts                  Account[]
   accountBalanceAdjustments AccountBalanceAdjustment[]
-  categories   Category[]
-  subcategories Subcategory[]
-  transactions Transaction[]
-  transfers    Transfer[]
-  creditCards  CreditCard[]
-  cardInvoices CreditCardInvoice[]
-  cardPurchases CardPurchase[]
-  cardInstallments CardInstallment[]
-  recurringTransactions RecurringTransaction[]
-  subscriptions Subscription[]
-  budgets Budget[]
-  financialGoals FinancialGoal[]
-  investments Investment[]
-  createdAt    DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime      @updatedAt @db.Timestamptz(3)
+  categories                Category[]
+  subcategories             Subcategory[]
+  transactions              Transaction[]
+  transfers                 Transfer[]
+  creditCards               CreditCard[]
+  cardInvoices              CreditCardInvoice[]
+  cardPurchases             CardPurchase[]
+  cardInstallments          CardInstallment[]
+  recurringTransactions     RecurringTransaction[]
+  subscriptions             Subscription[]
+  budgets                   Budget[]
+  financialGoals            FinancialGoal[]
+  investments               Investment[]
+  createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
 }
 
 model Account {
-  id                String        @id @default(uuid()) @db.Uuid
-  userId            String        @db.Uuid
-  name              String        @db.VarChar(100)
-  normalizedName    String        @db.VarChar(100)
-  institution       String?       @db.VarChar(120)
-  type              AccountType
-  initialBalance    Decimal       @default(0) @db.Decimal(19, 4)
-  currentBalance    Decimal       @default(0) @db.Decimal(19, 4)
-  color             String?       @db.VarChar(20)
-  icon              String?       @db.VarChar(60)
-  isActive          Boolean       @default(true)
-  user              User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  transactions      Transaction[]
-  balanceAdjustments AccountBalanceAdjustment[]
-  outgoingTransfers Transfer[]    @relation("OutgoingTransfer")
-  incomingTransfers Transfer[]    @relation("IncomingTransfer")
+  id                    String                     @id @default(uuid()) @db.Uuid
+  userId                String                     @db.Uuid
+  name                  String                     @db.VarChar(100)
+  normalizedName        String                     @db.VarChar(100)
+  institution           String?                    @db.VarChar(120)
+  type                  AccountType
+  initialBalance        Decimal                    @default(0) @db.Decimal(19, 4)
+  currentBalance        Decimal                    @default(0) @db.Decimal(19, 4)
+  color                 String?                    @db.VarChar(20)
+  icon                  String?                    @db.VarChar(60)
+  isActive              Boolean                    @default(true)
+  user                  User                       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions          Transaction[]
+  balanceAdjustments    AccountBalanceAdjustment[]
+  outgoingTransfers     Transfer[]                 @relation("OutgoingTransfer")
+  incomingTransfers     Transfer[]                 @relation("IncomingTransfer")
   recurringTransactions RecurringTransaction[]
-  subscriptions Subscription[]
-  financialGoals FinancialGoal[]
-  investments Investment[]
-  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
+  subscriptions         Subscription[]
+  financialGoals        FinancialGoal[]
+  investments           Investment[]
+  createdAt             DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
 
   @@unique([userId, name])
   @@unique([userId, normalizedName])
@@ -191,24 +195,24 @@ model AccountBalanceAdjustment {
 }
 
 model Category {
-  id             String        @id @default(uuid()) @db.Uuid
-  userId         String        @db.Uuid
-  name           String        @db.VarChar(100)
-  normalizedName String        @db.VarChar(100)
-  type           CategoryType
-  color          String?       @db.VarChar(20)
-  icon           String?       @db.VarChar(60)
-  isDefault      Boolean       @default(false)
-  isActive       Boolean       @default(true)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  transactions   Transaction[]
-  subcategories  Subcategory[]
-  cardPurchases  CardPurchase[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  userId                String                 @db.Uuid
+  name                  String                 @db.VarChar(100)
+  normalizedName        String                 @db.VarChar(100)
+  type                  CategoryType
+  color                 String?                @db.VarChar(20)
+  icon                  String?                @db.VarChar(60)
+  isDefault             Boolean                @default(false)
+  isActive              Boolean                @default(true)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  transactions          Transaction[]
+  subcategories         Subcategory[]
+  cardPurchases         CardPurchase[]
   recurringTransactions RecurringTransaction[]
-  subscriptions Subscription[]
-  budgets Budget[]
-  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime      @updatedAt @db.Timestamptz(3)
+  subscriptions         Subscription[]
+  budgets               Budget[]
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
   @@unique([userId, type, normalizedName])
   @@unique([id, userId])
@@ -216,21 +220,21 @@ model Category {
 }
 
 model Subcategory {
-  id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @db.Uuid
-  categoryId     String   @db.Uuid
-  name           String   @db.VarChar(100)
-  normalizedName String   @db.VarChar(100)
-  color          String?  @db.VarChar(20)
-  icon           String?  @db.VarChar(60)
-  isActive       Boolean  @default(true)
-  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  category       Category @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
-  transactions   Transaction[]
-  cardPurchases  CardPurchase[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  userId                String                 @db.Uuid
+  categoryId            String                 @db.Uuid
+  name                  String                 @db.VarChar(100)
+  normalizedName        String                 @db.VarChar(100)
+  color                 String?                @db.VarChar(20)
+  icon                  String?                @db.VarChar(60)
+  isActive              Boolean                @default(true)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category              Category               @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  transactions          Transaction[]
+  cardPurchases         CardPurchase[]
   recurringTransactions RecurringTransaction[]
-  createdAt      DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
   @@unique([categoryId, normalizedName])
   @@unique([id, userId])
@@ -238,68 +242,69 @@ model Subcategory {
 }
 
 model Transaction {
-  id            String            @id @default(uuid()) @db.Uuid
-  userId        String            @db.Uuid
-  accountId     String?           @db.Uuid
-  categoryId    String            @db.Uuid
-  subcategoryId String?           @db.Uuid
-  type          TransactionType
-  description   String            @db.VarChar(180)
-  amount        Decimal           @db.Decimal(19, 4)
-  date          DateTime          @db.Date
-  dueDate       DateTime?         @db.Date
-  settledAt     DateTime?         @db.Timestamptz(3)
-  status        TransactionStatus @default(PENDING)
-  paymentMethod PaymentMethod?
-  notes         String?           @db.Text
-  creditCardId  String?           @db.Uuid
-  creditCardInvoiceId String?     @db.Uuid
-  cardPurchaseId String?          @db.Uuid
-  recurringTransactionId String?  @db.Uuid
-  user          User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  account       Account?          @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
-  category      Category          @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
-  subcategory   Subcategory?      @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
-  creditCard    CreditCard?       @relation("CardTransaction", fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
-  creditCardInvoice CreditCardInvoice? @relation("InvoicePayment", fields: [creditCardInvoiceId, userId], references: [id, userId], onDelete: Restrict)
-  cardPurchase  CardPurchase?     @relation("CardPurchaseTransaction", fields: [cardPurchaseId, userId], references: [id, userId], onDelete: Restrict)
-  recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId, userId], references: [id, userId], onDelete: Restrict)
-  createdAt     DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime          @updatedAt @db.Timestamptz(3)
+  id                     String                @id @default(uuid()) @db.Uuid
+  userId                 String                @db.Uuid
+  accountId              String?               @db.Uuid
+  categoryId             String                @db.Uuid
+  subcategoryId          String?               @db.Uuid
+  type                   TransactionType
+  description            String                @db.VarChar(180)
+  amount                 Decimal               @db.Decimal(19, 4)
+  date                   DateTime              @db.Date
+  dueDate                DateTime?             @db.Date
+  settledAt              DateTime?             @db.Timestamptz(3)
+  status                 TransactionStatus     @default(PENDING)
+  paymentMethod          PaymentMethod?
+  notes                  String?               @db.Text
+  creditCardId           String?               @db.Uuid
+  creditCardInvoiceId    String?               @db.Uuid
+  cardPurchaseId         String?               @db.Uuid
+  recurringTransactionId String?               @db.Uuid
+  user                   User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account                Account?              @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  category               Category              @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  subcategory            Subcategory?          @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  creditCard             CreditCard?           @relation("CardTransaction", fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  creditCardInvoice      CreditCardInvoice?    @relation("InvoicePayment", fields: [creditCardInvoiceId, userId], references: [id, userId], onDelete: Restrict)
+  cardPurchase           CardPurchase?         @relation("CardPurchaseTransaction", fields: [cardPurchaseId, userId], references: [id, userId], onDelete: Restrict)
+  recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt              DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime              @updatedAt @db.Timestamptz(3)
 
+  @@unique([creditCardInvoiceId, userId])
+  @@unique([cardPurchaseId, userId])
+  @@unique([recurringTransactionId, date])
   @@index([userId, date])
+  @@index([userId, status, settledAt])
   @@index([userId, status, dueDate])
   @@index([accountId, date])
   @@index([categoryId, date])
   @@index([subcategoryId, date])
   @@index([creditCardId, date])
-  @@unique([creditCardInvoiceId, userId])
-  @@unique([cardPurchaseId, userId])
-  @@unique([recurringTransactionId, date])
 }
 
 model CreditCard {
-  id             String              @id @default(uuid()) @db.Uuid
-  userId         String              @db.Uuid
-  name           String              @db.VarChar(100)
-  normalizedName String              @db.VarChar(100)
-  institution    String?             @db.VarChar(120)
-  brand          String?             @db.VarChar(60)
-  type           CardType
-  creditLimit    Decimal             @default(0) @db.Decimal(19, 4)
-  closingDay     Int?
-  dueDay         Int?
-  color          String?             @db.VarChar(20)
-  isActive       Boolean             @default(true)
-  user           User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  invoices       CreditCardInvoice[]
-  purchases      CardPurchase[]
-  transactions   Transaction[]     @relation("CardTransaction")
-  installments   CardInstallment[]
-  subscriptions  Subscription[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  userId                String                 @db.Uuid
+  name                  String                 @db.VarChar(100)
+  normalizedName        String                 @db.VarChar(100)
+  institution           String?                @db.VarChar(120)
+  brand                 String?                @db.VarChar(60)
+  type                  CardType
+  creditLimit           Decimal                @default(0) @db.Decimal(19, 4)
+  closingDay            Int?
+  dueDay                Int?
+  color                 String?                @db.VarChar(20)
+  isActive              Boolean                @default(true)
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  invoices              CreditCardInvoice[]
+  purchases             CardPurchase[]
+  transactions          Transaction[]          @relation("CardTransaction")
+  installments          CardInstallment[]
+  subscriptions         Subscription[]
   recurringTransactions RecurringTransaction[]
-  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime            @updatedAt @db.Timestamptz(3)
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
   @@unique([userId, normalizedName])
   @@unique([id, userId])
@@ -307,37 +312,38 @@ model CreditCard {
 }
 
 model RecurringTransaction {
-  id                 String              @id @default(uuid()) @db.Uuid
-  userId             String              @db.Uuid
-  accountId          String              @db.Uuid
-  categoryId         String              @db.Uuid
-  subcategoryId      String?             @db.Uuid
-  type               TransactionType
-  description        String              @db.VarChar(180)
-  amount             Decimal             @db.Decimal(19, 4)
-  paymentMethod      PaymentMethod?
-  creditCardId       String?             @db.Uuid
-  notes              String?             @db.Text
-  frequency          RecurrenceFrequency
-  intervalDays       Int?
-  startDate          DateTime            @db.Date
-  endDate            DateTime?           @db.Date
-  endMode            RecurrenceEndMode   @default(NO_END_DATE)
-  durationValue      Int?
-  durationUnit       RecurrenceDurationUnit?
-  endedAt            DateTime?
-  occurrencesLimit   Int?
-  occurrencesGenerated Int               @default(0)
-  nextOccurrenceDate DateTime            @db.Date
-  status             RecurrenceStatus    @default(ACTIVE)
-  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
-  account            Account             @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
-  category           Category            @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
-  subcategory        Subcategory?        @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
-  creditCard         CreditCard?         @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
-  transactions       Transaction[]
-  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  id                   String                  @id @default(uuid()) @db.Uuid
+  userId               String                  @db.Uuid
+  accountId            String                  @db.Uuid
+  categoryId           String                  @db.Uuid
+  subcategoryId        String?                 @db.Uuid
+  type                 TransactionType
+  description          String                  @db.VarChar(180)
+  amount               Decimal                 @db.Decimal(19, 4)
+  paymentMethod        PaymentMethod?
+  creditCardId         String?                 @db.Uuid
+  notes                String?                 @db.Text
+  frequency            RecurrenceFrequency
+  intervalDays         Int?
+  startDate            DateTime                @db.Date
+  endDate              DateTime?               @db.Date
+  endMode              RecurrenceEndMode       @default(NO_END_DATE)
+  durationValue        Int?
+  durationUnit         RecurrenceDurationUnit?
+  endedAt              DateTime?
+  occurrencesLimit     Int?
+  occurrencesGenerated Int                     @default(0)
+  nextOccurrenceDate   DateTime                @db.Date
+  lastGeneratedAt      DateTime?               @db.Timestamptz(3)
+  status               RecurrenceStatus        @default(ACTIVE)
+  user                 User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account              Account                 @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  category             Category                @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  subcategory          Subcategory?            @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  creditCard           CreditCard?             @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  transactions         Transaction[]
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                @updatedAt @db.Timestamptz(3)
 
   @@unique([id, userId])
   @@index([userId, status, nextOccurrenceDate])
@@ -371,85 +377,88 @@ model Subscription {
 }
 
 model Budget {
-  id String @id @default(uuid()) @db.Uuid
-  userId String @db.Uuid
-  categoryId String @db.Uuid
-  year Int
-  month Int
-  limitAmount Decimal @db.Decimal(19,4)
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
-  category Category @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  categoryId  String   @db.Uuid
+  year        Int
+  month       Int
+  limitAmount Decimal  @db.Decimal(19, 4)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  category    Category @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
   @@unique([userId, categoryId, year, month])
   @@index([userId, year, month])
 }
 
 model FinancialGoal {
-  id String @id @default(uuid()) @db.Uuid
-  userId String @db.Uuid
-  accountId String? @db.Uuid
-  name String @db.VarChar(120)
-  normalizedName String @db.VarChar(120)
-  targetAmount Decimal @db.Decimal(19,4)
-  currentAmount Decimal @default(0) @db.Decimal(19,4)
-  deadline DateTime? @db.Date
-  notes String? @db.Text
-  status GoalStatus @default(ACTIVE)
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
-  account Account? @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  id             String     @id @default(uuid()) @db.Uuid
+  userId         String     @db.Uuid
+  accountId      String?    @db.Uuid
+  name           String     @db.VarChar(120)
+  normalizedName String     @db.VarChar(120)
+  targetAmount   Decimal    @db.Decimal(19, 4)
+  currentAmount  Decimal    @default(0) @db.Decimal(19, 4)
+  deadline       DateTime?  @db.Date
+  notes          String?    @db.Text
+  status         GoalStatus @default(ACTIVE)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account        Account?   @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
+
   @@unique([userId, normalizedName])
   @@index([userId, status])
 }
 
 model Investment {
-  id String @id @default(uuid()) @db.Uuid
-  userId String @db.Uuid
-  accountId String? @db.Uuid
-  name String @db.VarChar(120)
-  normalizedName String @db.VarChar(120)
-  institution String? @db.VarChar(120)
-  type InvestmentType
-  investedAmount Decimal @db.Decimal(19,4)
-  currentAmount Decimal @db.Decimal(19,4)
-  quantity Decimal? @db.Decimal(19,4)
-  averagePrice Decimal? @db.Decimal(19,4)
-  applicationDate DateTime @db.Date
-  maturityDate DateTime? @db.Date
-  liquidity String? @db.VarChar(120)
-  yieldType YieldType @default(CUSTOM)
-  referenceIndex String? @db.VarChar(60)
-  indexPercentage Decimal? @db.Decimal(10,4)
-  manualRate Decimal? @db.Decimal(10,4)
-  notes String? @db.Text
-  isActive Boolean @default(true)
-  user User @relation(fields:[userId], references:[id], onDelete: Restrict)
-  account Account? @relation(fields:[accountId,userId], references:[id,userId], onDelete: Restrict)
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @db.Timestamptz(3)
-  @@unique([userId,normalizedName])
-  @@index([userId,type,isActive])
+  id              String         @id @default(uuid()) @db.Uuid
+  userId          String         @db.Uuid
+  accountId       String?        @db.Uuid
+  name            String         @db.VarChar(120)
+  normalizedName  String         @db.VarChar(120)
+  institution     String?        @db.VarChar(120)
+  type            InvestmentType
+  investedAmount  Decimal        @db.Decimal(19, 4)
+  currentAmount   Decimal        @db.Decimal(19, 4)
+  quantity        Decimal?       @db.Decimal(19, 4)
+  averagePrice    Decimal?       @db.Decimal(19, 4)
+  applicationDate DateTime       @db.Date
+  maturityDate    DateTime?      @db.Date
+  liquidity       String?        @db.VarChar(120)
+  yieldType       YieldType      @default(CUSTOM)
+  referenceIndex  String?        @db.VarChar(60)
+  indexPercentage Decimal?       @db.Decimal(10, 4)
+  manualRate      Decimal?       @db.Decimal(10, 4)
+  notes           String?        @db.Text
+  isActive        Boolean        @default(true)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account         Account?       @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, normalizedName])
+  @@index([userId, type, isActive])
 }
 
 model CreditCardInvoice {
-  id                String         @id @default(uuid()) @db.Uuid
-  userId            String         @db.Uuid
-  creditCardId      String         @db.Uuid
-  referenceYear     Int
-  referenceMonth    Int
-  closingDate       DateTime       @db.Date
-  dueDate           DateTime       @db.Date
-  totalAmount       Decimal        @default(0) @db.Decimal(19, 4)
-  status            InvoiceStatus  @default(OPEN)
-  paidAt            DateTime?      @db.Timestamptz(3)
-  user              User           @relation(fields: [userId], references: [id], onDelete: Restrict)
-  creditCard        CreditCard     @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
-  installments      CardInstallment[]
-  paymentTransaction Transaction?  @relation("InvoicePayment")
-  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+  id                 String            @id @default(uuid()) @db.Uuid
+  userId             String            @db.Uuid
+  creditCardId       String            @db.Uuid
+  referenceYear      Int
+  referenceMonth     Int
+  closingDate        DateTime          @db.Date
+  dueDate            DateTime          @db.Date
+  totalAmount        Decimal           @default(0) @db.Decimal(19, 4)
+  status             InvoiceStatus     @default(OPEN)
+  paidAt             DateTime?         @db.Timestamptz(3)
+  user               User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditCard         CreditCard        @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  installments       CardInstallment[]
+  paymentTransaction Transaction?      @relation("InvoicePayment")
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 
   @@unique([creditCardId, referenceYear, referenceMonth])
   @@unique([id, userId])
@@ -457,26 +466,26 @@ model CreditCardInvoice {
 }
 
 model CardPurchase {
-  id             String          @id @default(uuid()) @db.Uuid
-  userId         String          @db.Uuid
-  creditCardId   String          @db.Uuid
-  categoryId     String          @db.Uuid
-  subcategoryId  String?         @db.Uuid
-  description    String          @db.VarChar(180)
-  merchant       String?         @db.VarChar(180)
-  totalAmount    Decimal         @db.Decimal(19, 4)
-  purchaseDate   DateTime        @db.Date
-  installmentsCount Int          @default(1)
-  notes          String?         @db.Text
-  status         PurchaseStatus  @default(ACTIVE)
-  user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
-  creditCard     CreditCard      @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
-  category       Category        @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
-  subcategory    Subcategory?    @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
-  installments   CardInstallment[]
-  transaction    Transaction?    @relation("CardPurchaseTransaction")
-  createdAt      DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+  id                String            @id @default(uuid()) @db.Uuid
+  userId            String            @db.Uuid
+  creditCardId      String            @db.Uuid
+  categoryId        String            @db.Uuid
+  subcategoryId     String?           @db.Uuid
+  description       String            @db.VarChar(180)
+  merchant          String?           @db.VarChar(180)
+  totalAmount       Decimal           @db.Decimal(19, 4)
+  purchaseDate      DateTime          @db.Date
+  installmentsCount Int               @default(1)
+  notes             String?           @db.Text
+  status            PurchaseStatus    @default(ACTIVE)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditCard        CreditCard        @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  category          Category          @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  subcategory       Subcategory?      @relation(fields: [subcategoryId, userId], references: [id, userId], onDelete: Restrict)
+  installments      CardInstallment[]
+  transaction       Transaction?      @relation("CardPurchaseTransaction")
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
 
   @@unique([id, userId])
   @@index([userId, creditCardId, purchaseDate])
@@ -484,21 +493,21 @@ model CardPurchase {
 }
 
 model CardInstallment {
-  id             String            @id @default(uuid()) @db.Uuid
-  userId         String            @db.Uuid
-  creditCardId   String            @db.Uuid
-  purchaseId     String            @db.Uuid
-  invoiceId      String            @db.Uuid
-  number         Int
-  amount         Decimal           @db.Decimal(19, 4)
-  dueDate        DateTime          @db.Date
-  status         InstallmentStatus @default(PENDING)
-  user           User              @relation(fields: [userId], references: [id], onDelete: Restrict)
-  creditCard     CreditCard        @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
-  purchase       CardPurchase      @relation(fields: [purchaseId, userId], references: [id, userId], onDelete: Restrict)
-  invoice        CreditCardInvoice @relation(fields: [invoiceId, userId], references: [id, userId], onDelete: Restrict)
-  createdAt      DateTime          @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime          @updatedAt @db.Timestamptz(3)
+  id           String            @id @default(uuid()) @db.Uuid
+  userId       String            @db.Uuid
+  creditCardId String            @db.Uuid
+  purchaseId   String            @db.Uuid
+  invoiceId    String            @db.Uuid
+  number       Int
+  amount       Decimal           @db.Decimal(19, 4)
+  dueDate      DateTime          @db.Date
+  status       InstallmentStatus @default(PENDING)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  creditCard   CreditCard        @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
+  purchase     CardPurchase      @relation(fields: [purchaseId, userId], references: [id, userId], onDelete: Restrict)
+  invoice      CreditCardInvoice @relation(fields: [invoiceId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt    DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @db.Timestamptz(3)
 
   @@unique([purchaseId, number])
   @@index([invoiceId, status])
@@ -506,24 +515,24 @@ model CardInstallment {
 }
 
 model Transfer {
-  id            String   @id @default(uuid()) @db.Uuid
-  userId        String   @db.Uuid
-  fromAccountId String   @db.Uuid
-  toAccountId   String   @db.Uuid
-  amount        Decimal  @db.Decimal(19, 4)
-  date          DateTime @db.Date
-  description   String?  @db.VarChar(180)
-  idempotencyKey String? @db.VarChar(100)
-  isReversed    Boolean  @default(false)
-  reversedAt    DateTime? @db.Timestamptz(3)
-  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  fromAccount   Account  @relation("OutgoingTransfer", fields: [fromAccountId, userId], references: [id, userId], onDelete: Restrict)
-  toAccount     Account  @relation("IncomingTransfer", fields: [toAccountId, userId], references: [id, userId], onDelete: Restrict)
-  createdAt     DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  fromAccountId  String    @db.Uuid
+  toAccountId    String    @db.Uuid
+  amount         Decimal   @db.Decimal(19, 4)
+  date           DateTime  @db.Date
+  description    String?   @db.VarChar(180)
+  idempotencyKey String?   @db.VarChar(100)
+  isReversed     Boolean   @default(false)
+  reversedAt     DateTime? @db.Timestamptz(3)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  fromAccount    Account   @relation("OutgoingTransfer", fields: [fromAccountId, userId], references: [id, userId], onDelete: Restrict)
+  toAccount      Account   @relation("IncomingTransfer", fields: [toAccountId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, date])
   @@index([fromAccountId, date])
   @@index([toAccountId, date])
-  @@unique([userId, idempotencyKey])
 }
