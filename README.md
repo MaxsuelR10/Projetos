@@ -42,6 +42,35 @@ intervalo customizado. As ocorrências são geradas localmente como lançamentos
 pendentes, sem duplicidade. Também inclui assinaturas com custo mensal
 equivalente calculado localmente, sem consultar APIs externas.
 
+## Arquitetura e manutenção
+
+- **Frontend:** páginas em `frontend/src/pages`, componentes reutilizáveis em
+  `components`, chamadas HTTP em `services`, estado de sessão e feedback em
+  `contexts` e tokens visuais em `styles`.
+- **Backend:** rotas apenas encaminham requisições autenticadas; controllers
+  delegam regras aos `services`; `validators` Zod protegem a entrada; Prisma e
+  PostgreSQL mantêm as relações e transações atômicas.
+- **Contrato HTTP:** respostas de recurso incluem `success: true` e `data`.
+  Durante a transição, as chaves legadas (por exemplo, `account` e `cards`)
+  permanecem no topo. Erros incluem `success: false`, `code` e `message`, sem
+  detalhes internos. A consulta de sessão anônima mantém
+  `{ authenticated: false, user: null }` por ser um estado, não um erro.
+- **Datas:** datas financeiras são armazenadas como data UTC (`YYYY-MM-DD`) e
+  apresentadas em `pt-BR` com timezone UTC, para não mudar o dia no Brasil.
+
+## Regras financeiras resumidas
+
+- Apenas receita/despesa concluída altera o saldo; pendências não alteram.
+- Transferência débita a origem e credita o destino na mesma transação, sem
+  mudar o patrimônio; a chave de idempotência impede duplicação.
+- Compra no crédito não baixa conta. A baixa ocorre uma única vez ao pagar a
+  fatura, também de forma atômica.
+- Parcelas usam centavos inteiros e distribuem o resto na primeira(s) parcela(s),
+  preservando exatamente o total original.
+- Recorrências usam unicidade por recorrência/data e processamento transacional.
+- Registros com histórico são cancelados, desativados ou bloqueados para
+  exclusão; não são removidos indiscriminadamente.
+
 ## Tecnologias
 
 ### Frontend

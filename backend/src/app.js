@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import { env } from "./config/env.js";
+import { apiResponse } from "./middlewares/api-response.middleware.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { notFound } from "./middlewares/not-found.middleware.js";
 import { apiRouter } from "./routes/index.js";
@@ -19,6 +20,7 @@ app.use(
 );
 app.use(express.json({ limit: "100kb" }));
 app.use(cookieParser());
+app.use(apiResponse);
 
 app.use("/api", apiRouter);
 

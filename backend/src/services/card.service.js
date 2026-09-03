@@ -15,7 +15,7 @@ const invoiceInclude = {
 function asDate(value) { return new Date(`${value}T00:00:00.000Z`); }
 function nullable(value) { return value?.trim() || null; }
 function serializeDecimal(value) { return value?.toString() ?? "0"; }
-function splitMoney(amount, count) {
+export function splitMoney(amount, count) {
   const [whole, fraction = ""] = amount.split(".");
   const units = BigInt(whole) * 100n + BigInt(`${fraction}00`.slice(0, 2));
   const base = units / BigInt(count); const remainder = units % BigInt(count);
@@ -109,10 +109,14 @@ async function realignUnpaidInstallments(db, userId, card) {
 export async function listCards(userId, status) {
   const isActive = status === "all" ? undefined : status === "active";
   const cards = await prisma.creditCard.findMany({ where: { userId, ...(isActive === undefined ? {} : { isActive }) }, orderBy: [{ isActive: "desc" }, { name: "asc" }] });
-  return Promise.all(cards.map(async (card) => {
-    const aggregate = await prisma.cardInstallment.aggregate({ where: { userId, creditCardId: card.id, status: "PENDING" }, _sum: { amount: true } });
-    return serializeCard(card, aggregate._sum.amount?.toString() ?? "0");
-  }));
+  if (!cards.length) return [];
+  const usedLimits = await prisma.cardInstallment.groupBy({
+    by: ["creditCardId"],
+    where: { userId, creditCardId: { in: cards.map((card) => card.id) }, status: "PENDING" },
+    _sum: { amount: true },
+  });
+  const usedByCardId = new Map(usedLimits.map((item) => [item.creditCardId, item._sum.amount?.toString() ?? "0"]));
+  return cards.map((card) => serializeCard(card, usedByCardId.get(card.id) ?? "0"));
 }
 export async function getCard(userId, id) {
   const card = await findCard(prisma, userId, id);

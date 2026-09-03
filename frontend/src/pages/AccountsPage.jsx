@@ -5,6 +5,7 @@ import { CurrencyInput } from "../components/forms/CurrencyInput.jsx";
 import { ACCOUNT_TYPES, EMPTY_ACCOUNT_FORM } from "../constants/accounts.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { useConfirm } from "../hooks/useConfirm.js";
+import { useToast } from "../hooks/useToast.js";
 import { accountService } from "../services/account.service.js";
 import { notifyFinancialDataChanged } from "../utils/financial-events.js";
 import { formatAccountType, formatCurrency, formatDate, parseCurrency } from "../utils/formatters.js";
@@ -22,6 +23,7 @@ function BalanceHistory({ items, currency }) {
 export function AccountsPage() {
   const { user } = useAuth();
   const requestConfirmation = useConfirm();
+  const toast = useToast();
   const [accounts, setAccounts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -60,9 +62,11 @@ export function AccountsPage() {
         const updated = await accountService.update(editingAccount.id, payload);
         setAccounts((current) => current.map((account) => account.id === updated.id ? { ...account, ...updated } : account));
         setNotice("Conta atualizada.");
+        toast.success("Conta atualizada.");
       } else {
         const created = await accountService.create({ ...payload, initialBalance: parseCurrency(form.initialBalance) });
         setAccounts((current) => [...current, created]); setNotice("Conta criada.");
+        toast.success("Conta criada.");
       }
       notifyFinancialDataChanged(); closeEditors();
     } catch (requestError) { setError(getApiError(requestError)); }
@@ -80,6 +84,7 @@ export function AccountsPage() {
       const updated = await accountService.adjustBalance(balanceAccount.id, nextBalance);
       setAccounts((current) => current.map((account) => account.id === updated.id ? { ...account, ...updated } : account));
       notifyFinancialDataChanged(); setNotice("Saldo atualizado e registrado no histórico."); closeEditors();
+      toast.success("Saldo atualizado e registrado no histórico.");
     } catch (requestError) { setError(getApiError(requestError, "Não foi possível atualizar o saldo. Tente novamente.")); }
     finally { setIsSubmitting(false); }
   }
@@ -90,6 +95,7 @@ export function AccountsPage() {
       const updated = await accountService.update(account.id, { isActive: nextStatus });
       setAccounts((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item));
       notifyFinancialDataChanged(); setNotice(nextStatus ? "Conta ativada." : "Conta desativada. O histórico foi preservado.");
+      toast.success(nextStatus ? "Conta ativada." : "Conta desativada.");
     } catch (requestError) { setError(getApiError(requestError)); }
     finally { setBusyAccountId(null); }
   }
@@ -107,6 +113,7 @@ export function AccountsPage() {
       if (!confirmed) return;
       await accountService.remove(account.id);
       setAccounts((current) => current.filter((item) => item.id !== account.id)); notifyFinancialDataChanged(); setNotice("Conta excluída.");
+      toast.success("Conta excluída.");
     } catch (requestError) { setError(getApiError(requestError, "Não foi possível excluir a conta.")); }
     finally { setBusyAccountId(null); }
   }
