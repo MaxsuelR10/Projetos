@@ -809,6 +809,15 @@ button:disabled {
 .card-actions { display: flex; flex-wrap: wrap; gap: 0.2rem; margin-top: 0.15rem; }
 .card-actions button, .subcategory-row button { padding: 0.45rem; font-size: 0.78rem; }
 .danger-action { color: var(--color-danger) !important; }
+.form-notice { padding: 0.8rem 0.95rem; border: 1px solid #b9dfc8; border-radius: var(--radius-sm); color: #175c36; background: #edf9f0; }
+.checkbox-field { display: flex; align-items: center; gap: 0.55rem; min-height: 2.7rem; font-size: 0.9rem; font-weight: 750; }
+.checkbox-field input { width: 1.1rem; height: 1.1rem; }
+.action-menu { position: relative; flex: 0 0 auto; margin-left: auto; }
+.icon-button { width: 2.5rem; min-height: 2.5rem; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--color-line); border-radius: 0.65rem; color: var(--color-ink); background: var(--color-surface); font-size: 1.25rem; line-height: 1; }
+.action-menu-panel { position: absolute; z-index: 20; top: calc(100% + 0.3rem); right: 0; display: grid; width: min(15rem, calc(100vw - 2.5rem)); padding: 0.3rem; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface); box-shadow: var(--shadow-card); }
+.action-menu-panel button { min-height: 2.6rem; padding: 0.45rem 0.65rem; border: 0; border-radius: 0.5rem; text-align: left; color: var(--color-ink); background: transparent; font-weight: 700; }
+.action-menu-panel button:hover, .action-menu-panel button:focus-visible { background: var(--color-brand-soft); }
+.action-menu-panel button:disabled { opacity: 0.55; }
 
 .empty-state { padding: 2rem 1.25rem; text-align: center; }
 .empty-state-icon { width: 2.8rem; height: 2.8rem; display: grid; place-items: center; margin: 0 auto 1rem; border-radius: 50%; color: var(--color-brand); background: var(--color-brand-soft); font-size: 1.5rem; font-weight: 700; }

@@ -162,7 +162,32 @@ export async function listAccountBalanceAdjustments(userId, id) {
   }));
 }
 
-export async function deleteAccount(userId, id) {
+const dependencyDefinitions = [
+  { key: "transactions", label: "lançamentos", count: (db, accountId, userId) => db.transaction.count({ where: { accountId, userId, creditCardInvoiceId: null } }) },
+  { key: "invoicePayments", label: "pagamentos de fatura", count: (db, accountId, userId) => db.transaction.count({ where: { accountId, userId, creditCardInvoiceId: { not: null } } }) },
+  { key: "transfers", label: "transferências", count: (db, accountId, userId) => db.transfer.count({ where: { userId, OR: [{ fromAccountId: accountId }, { toAccountId: accountId }] } }) },
+  { key: "recurrences", label: "recorrências", count: (db, accountId, userId) => db.recurringTransaction.count({ where: { accountId, userId } }) },
+  { key: "subscriptions", label: "assinaturas", count: (db, accountId, userId) => db.subscription.count({ where: { accountId, userId } }) },
+  { key: "goals", label: "metas", count: (db, accountId, userId) => db.financialGoal.count({ where: { accountId, userId } }) },
+  { key: "investments", label: "investimentos", count: (db, accountId, userId) => db.investment.count({ where: { accountId, userId } }) },
+  { key: "balanceHistory", label: "ajustes de saldo", count: (db, accountId, userId) => db.accountBalanceAdjustment.count({ where: { accountId, userId } }) },
+];
+
+async function countAccountDependencies(db, userId, accountId) {
+  const items = (await Promise.all(dependencyDefinitions.map(async (definition) => ({
+    key: definition.key,
+    label: definition.label,
+    count: await definition.count(db, accountId, userId),
+  })))).filter((item) => item.count > 0);
+  return { total: items.reduce((sum, item) => sum + item.count, 0), items };
+}
+
+export async function getAccountDependencies(userId, id) {
+  const account = await findAccount(userId, id);
+  return countAccountDependencies(prisma, userId, account.id);
+}
+
+async function legacyDeleteAccount(userId, id) {
   const account = await findAccount(userId, id);
 
   const linkedRecords = await prisma.$transaction(async (transaction) => {
@@ -184,4 +209,21 @@ export async function deleteAccount(userId, id) {
   });
 
   return serializeAccount(linkedRecords);
+}
+
+export async function deleteAccount(userId, id) {
+  const account = await findAccount(userId, id);
+  const deletedAccount = await prisma.$transaction(async (transaction) => {
+    const dependencies = await countAccountDependencies(transaction, userId, account.id);
+    if (dependencies.total > 0) {
+      throw new AppError(
+        "Esta conta possui vínculos financeiros e só pode ser desativada para preservar o histórico",
+        409,
+        "ACCOUNT_HAS_DEPENDENCIES",
+        dependencies,
+      );
+    }
+    return transaction.account.delete({ where: { id: account.id } });
+  });
+  return serializeAccount(deletedAccount);
 }

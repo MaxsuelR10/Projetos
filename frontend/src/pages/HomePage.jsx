@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { dashboardService } from "../services/dashboard.service.js";
 import { formatCurrency } from "../utils/formatters.js";
 import { getApiError } from "../utils/get-api-error.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { FINANCIAL_DATA_CHANGED } from "../utils/financial-events.js";
 
 export function HomePage() {
   const { user } = useAuth();
@@ -11,20 +12,28 @@ export function HomePage() {
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [hoveredSeries, setHoveredSeries] = useState(null);
 
+  const loadDashboard = useCallback(() => {
+    let active = true;
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    dashboardService
+      .get(month)
+      .then((data) => active && setState({ loading: false, error: "", data }))
+      .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
+    return () => { active = false; };
+  }, [month]);
+
   useEffect(() => {
     let active = true;
     dashboardService
       .get(month)
       .then((data) => active && setState({ loading: false, error: "", data }))
-      .catch(
-        (error) =>
-          active &&
-          setState({ loading: false, error: getApiError(error), data: null }),
-      );
+      .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
+    window.addEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
     return () => {
       active = false;
+      window.removeEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
     };
-  }, [month]);
+  }, [loadDashboard, month]);
 
   const data = state.data;
   const max = data

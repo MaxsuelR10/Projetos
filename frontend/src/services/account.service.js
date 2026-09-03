@@ -26,6 +26,11 @@ export const accountService = {
     return response.data.adjustments
   },
 
+  async dependencies(id) {
+    const response = await api.get(`/accounts/${id}/dependencies`)
+    return response.data.dependencies
+  },
+
   async remove(id) {
     await api.delete(`/accounts/${id}`)
   },

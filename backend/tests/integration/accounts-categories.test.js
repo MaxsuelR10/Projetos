@@ -120,36 +120,59 @@ describe.sequential("contas e categorias", () => {
   it("ajusta o saldo atual sem alterar o saldo inicial e mantém histórico", async () => {
     const reactivated = await primaryAgent.patch(`/api/accounts/${primaryAccountId}`).send({ isActive: true });
     expect(reactivated.status).toBe(200);
-    const adjusted = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "1500" });
+    const adjusted = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "1659.74" });
     expect(adjusted.status).toBe(200);
-    expect(adjusted.body.account).toMatchObject({ initialBalance: "1250.5", currentBalance: "1500" });
+    expect(adjusted.body.account).toMatchObject({ initialBalance: "1250.5", currentBalance: "1659.74" });
 
     const adjustment = await prisma.accountBalanceAdjustment.findFirst({ where: { accountId: primaryAccountId, userId: primaryUserId }, orderBy: { createdAt: "desc" } });
     expect(adjustment).toMatchObject({ previousBalance: expect.anything(), newBalance: expect.anything(), difference: expect.anything() });
     expect(adjustment.previousBalance.toString()).toBe("1250.5");
-    expect(adjustment.newBalance.toString()).toBe("1500");
-    expect(adjustment.difference.toString()).toBe("249.5");
+    expect(adjustment.newBalance.toString()).toBe("1659.74");
+    expect(adjustment.difference.toString()).toBe("409.24");
 
     const dashboard = await primaryAgent.get("/api/dashboard?month=2026-08");
     expect(dashboard.status).toBe(200);
-    expect(dashboard.body.summary.availableBalance).toBe("1500");
+    expect(dashboard.body.summary.availableBalance).toBe("1659.74");
 
     const zero = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "0.00" });
     expect(zero.status).toBe(200);
     expect(zero.body.account).toMatchObject({ initialBalance: "1250.5", currentBalance: "0" });
-    const negative = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "-25.75" });
+    const positive = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "100" });
+    expect(positive.status).toBe(200);
+    const negative = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "-50" });
     expect(negative.status).toBe(200);
-    expect(negative.body.account.currentBalance).toBe("-25.75");
+    expect(negative.body.account.currentBalance).toBe("-50");
+    const final = await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "500" });
+    expect(final.status).toBe(200);
+    expect(final.body.account.currentBalance).toBe("500");
     expect(await prisma.transaction.count({ where: { userId: primaryUserId } })).toBe(0);
     const history = await primaryAgent.get(`/api/accounts/${primaryAccountId}/balance-adjustments`);
     expect(history.status).toBe(200);
-    expect(history.body.adjustments).toHaveLength(3);
-    expect(history.body.adjustments[0]).toMatchObject({ previousBalance: "0", newBalance: "-25.75", difference: "-25.75" });
-
-    await primaryAgent.patch(`/api/accounts/${primaryAccountId}/balance`).send({ currentBalance: "1500" });
+    expect(history.body.adjustments).toHaveLength(5);
+    expect(history.body.adjustments[0]).toMatchObject({ previousBalance: "-50", newBalance: "500", difference: "550" });
 
     const forbidden = await primaryAgent.patch(`/api/accounts/${secondaryAccountId}/balance`).send({ currentBalance: "1" });
     expect(forbidden.status).toBe(404);
+  });
+
+  it("só exclui contas vazias e bloqueia vínculos, oferecendo desativação ao cliente", async () => {
+    const empty = await primaryAgent.post("/api/accounts").send({ name: "Conta vazia", type: "CASH", initialBalance: "0" });
+    expect(empty.status).toBe(201);
+    expect((await primaryAgent.delete(`/api/accounts/${empty.body.account.id}`)).status).toBe(204);
+    expect((await primaryAgent.get(`/api/accounts/${empty.body.account.id}`)).status).toBe(404);
+
+    const dependencies = await primaryAgent.get(`/api/accounts/${primaryAccountId}/dependencies`);
+    expect(dependencies.status).toBe(200);
+    expect(dependencies.body.dependencies.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "balanceHistory", count: 5 }),
+    ]));
+
+    const blocked = await primaryAgent.delete(`/api/accounts/${primaryAccountId}`);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe("ACCOUNT_HAS_DEPENDENCIES");
+    expect(blocked.body.error.details.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "balanceHistory", count: 5 }),
+    ]));
   });
 
   it("cria categorias e subcategorias sem duplicidade", async () => {

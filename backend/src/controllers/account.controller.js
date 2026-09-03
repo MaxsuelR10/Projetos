@@ -3,6 +3,7 @@ import {
   createAccount,
   deleteAccount,
   getAccount,
+  getAccountDependencies,
   listAccounts,
   listAccountBalanceAdjustments,
   updateAccount,
@@ -47,6 +48,11 @@ export async function listBalanceAdjustments(request, response) {
     request.validated.params.id,
   );
   return response.status(200).json({ adjustments });
+}
+
+export async function dependencies(request, response) {
+  const result = await getAccountDependencies(request.auth.userId, request.validated.params.id);
+  return response.status(200).json({ dependencies: result });
 }
 
 export async function remove(request, response) {
