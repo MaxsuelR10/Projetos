@@ -7,6 +7,15 @@ function nullable(value) {
   return value?.trim() || null;
 }
 
+function isMissingBalanceHistoryTable(error) {
+  const values = [error?.code, error?.cause?.code, error?.message, error?.cause?.message]
+    .filter(Boolean)
+    .join(" ");
+  return error?.code === "P2021"
+    || error?.cause?.code === "42P01"
+    || /AccountBalanceAdjustment|relation .* does not exist|table .* does not exist/i.test(values);
+}
+
 function serializeAccount(account, pendingExpenses = "0") {
   const { normalizedName: _normalizedName, userId: _userId, ...publicAccount } = account;
 
@@ -125,7 +134,7 @@ export async function updateAccount(userId, id, data) {
   return serializeAccount(updatedAccount);
 }
 
-export async function adjustAccountBalance(userId, id, currentBalance) {
+async function adjustAccountBalanceWithHistory(userId, id, currentBalance) {
   const updatedAccount = await prisma.$transaction(async (db) => {
     const account = await db.account.findFirst({ where: { id, userId } });
     if (!account) throw new AppError("Conta nÃ£o encontrada", 404, "ACCOUNT_NOT_FOUND");
@@ -147,13 +156,37 @@ export async function adjustAccountBalance(userId, id, currentBalance) {
   return serializeAccount(updatedAccount);
 }
 
+export async function adjustAccountBalance(userId, id, currentBalance) {
+  try {
+    return await adjustAccountBalanceWithHistory(userId, id, currentBalance);
+  } catch (error) {
+    if (!isMissingBalanceHistoryTable(error)) throw error;
+
+    const updatedAccount = await prisma.$transaction(async (db) => {
+      const account = await db.account.findFirst({ where: { id, userId } });
+      if (!account) throw new AppError("Conta não encontrada", 404, "ACCOUNT_NOT_FOUND");
+      return db.account.update({
+        where: { id: account.id },
+        data: { currentBalance: new Prisma.Decimal(currentBalance) },
+      });
+    });
+    return { ...serializeAccount(updatedAccount), balanceHistoryAvailable: false };
+  }
+}
+
 export async function listAccountBalanceAdjustments(userId, id) {
   await findAccount(userId, id);
-  const adjustments = await prisma.accountBalanceAdjustment.findMany({
-    where: { userId, accountId: id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  let adjustments;
+  try {
+    adjustments = await prisma.accountBalanceAdjustment.findMany({
+      where: { userId, accountId: id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+  } catch (error) {
+    if (isMissingBalanceHistoryTable(error)) return [];
+    throw error;
+  }
   return adjustments.map(({ userId: _userId, ...item }) => ({
     ...item,
     previousBalance: item.previousBalance.toString(),
@@ -174,11 +207,20 @@ const dependencyDefinitions = [
 ];
 
 async function countAccountDependencies(db, userId, accountId) {
-  const items = (await Promise.all(dependencyDefinitions.map(async (definition) => ({
-    key: definition.key,
-    label: definition.label,
-    count: await definition.count(db, accountId, userId),
-  })))).filter((item) => item.count > 0);
+  const items = (await Promise.all(dependencyDefinitions.map(async (definition) => {
+    try {
+      return {
+        key: definition.key,
+        label: definition.label,
+        count: await definition.count(db, accountId, userId),
+      };
+    } catch (error) {
+      if (definition.key === "balanceHistory" && isMissingBalanceHistoryTable(error)) {
+        return { key: definition.key, label: definition.label, count: 0 };
+      }
+      throw error;
+    }
+  }))).filter((item) => item.count > 0);
   return { total: items.reduce((sum, item) => sum + item.count, 0), items };
 }
 

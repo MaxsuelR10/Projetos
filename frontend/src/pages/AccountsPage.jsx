@@ -83,8 +83,12 @@ export function AccountsPage() {
     try {
       const updated = await accountService.adjustBalance(balanceAccount.id, nextBalance);
       setAccounts((current) => current.map((account) => account.id === updated.id ? { ...account, ...updated } : account));
-      notifyFinancialDataChanged(); setNotice("Saldo atualizado e registrado no histórico."); closeEditors();
-      toast.success("Saldo atualizado e registrado no histórico.");
+      notifyFinancialDataChanged();
+      const message = updated.balanceHistoryAvailable === false
+        ? "Saldo atualizado. O histórico será normalizado após a atualização do banco."
+        : "Saldo atualizado e registrado no histórico.";
+      setNotice(message); closeEditors();
+      toast.success(message);
     } catch (requestError) { setError(getApiError(requestError, "Não foi possível atualizar o saldo. Tente novamente.")); }
     finally { setIsSubmitting(false); }
   }
