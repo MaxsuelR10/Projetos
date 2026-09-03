@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { EmptyState } from '../components/feedback/EmptyState.jsx'
 import { useAuth } from '../hooks/useAuth.js'
 import { accountService } from '../services/account.service.js'
@@ -12,6 +12,10 @@ import { getApiError } from '../utils/get-api-error.js'
 import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 import { CategorySelect } from '../components/forms/CategorySelect.jsx'
 import { useConfirm } from '../hooks/useConfirm.js'
+import { useToast } from '../hooks/useToast.js'
+import { ActionMenu } from '../components/actions/ActionMenu.jsx'
+import { ConfirmModal } from '../components/feedback/ConfirmModal.jsx'
+import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 
 const today = new Date().toISOString().slice(0, 10)
 const initialMovement = {
@@ -66,6 +70,8 @@ function paymentMethodLabel(value) {
 
 export function TransactionsPage() {
   const { user } = useAuth()
+  const toast = useToast()
+  const navigate = useNavigate()
   const requestConfirmation = useConfirm()
   const [mode, setMode] = useState('movement')
   const [movement, setMovement] = useState(initialMovement)
@@ -74,48 +80,78 @@ export function TransactionsPage() {
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [searchTerm, setSearchTerm] = useState('')
-  const categoryFilter = ''
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+  const [accountFilter, setAccountFilter] = useState('')
+  const [cardFilter, setCardFilter] = useState('')
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('')
+  const [fromFilter, setFromFilter] = useState('')
+  const [toFilter, setToFilter] = useState('')
+  const [sortFilter, setSortFilter] = useState('DATE_DESC')
+  const [page, setPage] = useState(1)
+  const [pagination, setPagination] = useState({ page: 1, limit: 30, total: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
   const [editingMovement, setEditingMovement] = useState(null)
   const [payingItem, setPayingItem] = useState(null)
   const [payAccount, setPayAccount] = useState('')
   const [payDate, setPayDate] = useState(today)
   const [details, setDetails] = useState(null)
+  const [transferDetails, setTransferDetails] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [pendingAction, setPendingAction] = useState('')
+  const loadRequestRef = useRef(0)
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current
     setIsLoading(true)
     try {
       const [accounts, cards, categories, transactionResult, transfers] = await Promise.all([
         accountService.list('active'),
         cardService.list('active'),
         categoryService.list('active'),
-        transactionService.list({ limit: 100 }),
-        transferService.list(),
+        transactionService.list({
+          page,
+          limit: 30,
+          ...(typeFilter !== 'ALL' ? { type: typeFilter } : {}),
+          ...(statusFilter !== 'ALL' ? { state: statusFilter } : {}),
+          ...(categoryFilter ? { categoryId: categoryFilter } : {}),
+          ...(accountFilter ? { accountId: accountFilter } : {}),
+          ...(cardFilter ? { creditCardId: cardFilter } : {}),
+          ...(paymentMethodFilter ? { paymentMethod: paymentMethodFilter } : {}),
+          ...(fromFilter ? { from: fromFilter } : {}),
+          ...(toFilter ? { to: toFilter } : {}),
+          ...(debouncedSearchTerm ? { q: debouncedSearchTerm } : {}),
+          sort: sortFilter,
+        }),
+        transferService.list({
+          ...(accountFilter ? { accountId: accountFilter } : {}),
+          ...(fromFilter ? { from: fromFilter } : {}),
+          ...(toFilter ? { to: toFilter } : {}),
+        }),
       ])
+      if (requestId !== loadRequestRef.current) return
       setData({ accounts, cards, categories, transactions: transactionResult.transactions, transfers })
+      setPagination(transactionResult.pagination)
       setError('')
     } catch (requestError) {
+      if (requestId !== loadRequestRef.current) return
       setError(getApiError(requestError))
     } finally {
-      setIsLoading(false)
+      if (requestId === loadRequestRef.current) setIsLoading(false)
     }
-  }, [])
+  }, [accountFilter, cardFilter, categoryFilter, debouncedSearchTerm, fromFilter, page, paymentMethodFilter, sortFilter, statusFilter, toFilter, typeFilter])
 
   useEffect(() => {
     const timerId = window.setTimeout(() => { void load() }, 0)
     return () => window.clearTimeout(timerId)
   }, [load])
 
-  // Clear success messages after 4 seconds
   useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => setSuccessMessage(''), 4000)
-      return () => clearTimeout(timer)
-    }
-  }, [successMessage])
+    const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [searchTerm])
 
   const usableCategories = useMemo(
     () => data.categories.filter((category) => category.type === movement.type),
@@ -124,30 +160,7 @@ export function TransactionsPage() {
   const selectedCategory = usableCategories.find((category) => category.id === movement.categoryId)
   const creditCards = useMemo(() => data.cards.filter((card) => card.type === 'CREDIT' && card.isActive), [data.cards])
 
-  const filteredTransactions = useMemo(() => {
-    return data.transactions.filter((item) => {
-      // Type filter
-      if (typeFilter !== 'ALL' && item.type !== typeFilter) return false
-
-      // Status filter
-      if (statusFilter === 'OPEN' && item.status !== 'PENDING' && item.status !== 'OVERDUE') return false
-      if (statusFilter === 'SETTLED' && item.status !== 'COMPLETED') return false
-
-      // Category filter
-      if (categoryFilter && item.categoryId !== categoryFilter) return false
-
-      // Search term
-      if (searchTerm) {
-        const query = searchTerm.toLowerCase()
-        const descMatch = item.description?.toLowerCase().includes(query)
-        const catMatch = item.category?.name?.toLowerCase().includes(query)
-        const accMatch = item.account?.name?.toLowerCase().includes(query)
-        if (!descMatch && !catMatch && !accMatch) return false
-      }
-
-      return true
-    })
-  }, [data.transactions, typeFilter, statusFilter, searchTerm])
+  const filteredTransactions = data.transactions
 
   const availablePaymentMethods =
     movement.type === 'EXPENSE' ? paymentMethods : paymentMethods.filter(([value]) => value !== 'CREDIT_CARD')
@@ -164,7 +177,7 @@ export function TransactionsPage() {
           next.creditCardId = null
           next.purchaseType = 'ONE_TIME'
           next.installmentsCount = ''
-          next.status = 'COMPLETED'
+          next.status = 'PENDING'
         } else {
           next.status = 'PENDING'
         }
@@ -183,6 +196,28 @@ export function TransactionsPage() {
   function changeTransfer(event) {
     setTransfer((current) => ({ ...current, [event.target.name]: event.target.value }))
   }
+
+  async function refreshFinancialData() {
+    notifyFinancialDataChanged()
+    await load()
+  }
+
+  function clearFilters() {
+    setTypeFilter('ALL')
+    setStatusFilter('ALL')
+    setSearchTerm('')
+    setDebouncedSearchTerm('')
+    setCategoryFilter('')
+    setAccountFilter('')
+    setCardFilter('')
+    setPaymentMethodFilter('')
+    setFromFilter('')
+    setToFilter('')
+    setSortFilter('DATE_DESC')
+    setPage(1)
+  }
+
+  const hasActiveFilters = typeFilter !== 'ALL' || statusFilter !== 'ALL' || Boolean(searchTerm || categoryFilter || accountFilter || cardFilter || paymentMethodFilter || fromFilter || toFilter || sortFilter !== 'DATE_DESC')
 
   function closeMovementEditor() {
     setEditingMovement(null)
@@ -251,13 +286,13 @@ export function TransactionsPage() {
       }
       if (editingMovement) {
         await transactionService.update(editingMovement.id, payload)
-        setSuccessMessage('Lançamento atualizado com sucesso!')
+        toast.success('Movimentação atualizada.')
       } else {
         await transactionService.create(payload)
-        setSuccessMessage('Lançamento registrado com sucesso!')
+        toast.success('Movimentação registrada.')
       }
       closeMovementEditor()
-      await load()
+      await refreshFinancialData()
     } catch (requestError) {
       setError(getApiError(requestError))
     } finally {
@@ -277,8 +312,8 @@ export function TransactionsPage() {
         idempotencyKey: crypto.randomUUID(),
       })
       setTransfer((current) => ({ ...initialTransfer, fromAccountId: current.fromAccountId, date: today }))
-      setSuccessMessage('Transferência realizada com sucesso!')
-      await load()
+      toast.success('Transferência realizada com sucesso.')
+      await refreshFinancialData()
     } catch (requestError) {
       setError(getApiError(requestError))
     } finally {
@@ -302,14 +337,14 @@ export function TransactionsPage() {
         accountId: payAccount || null,
         date: payDate,
       })
-      setSuccessMessage(
+      toast.success(
         payingItem.type === 'EXPENSE'
           ? `Pagamento de ${formatCurrency(payingItem.amount, user.currency)} concluído!`
           : `Recebimento de ${formatCurrency(payingItem.amount, user.currency)} registrado!`,
       )
       setPayingItem(null)
       if (details?.id === payingItem.id) setDetails(null)
-      await load()
+      await refreshFinancialData()
     } catch (requestError) {
       setError(getApiError(requestError))
     } finally {
@@ -319,24 +354,55 @@ export function TransactionsPage() {
 
   async function cancel(item) {
     if (!(await requestConfirmation({ title: 'Cancelar lançamento?', message: `O lançamento “${item.description}” será cancelado e continuará disponível no histórico.`, confirmLabel: 'Cancelar lançamento', destructive: true, icon: '!' }))) return
+    const actionKey = `cancel:${item.id}`
+    if (pendingAction) return
+    setPendingAction(actionKey)
     try {
       await transactionService.cancel(item.id)
-      setSuccessMessage('Lançamento cancelado e preservado no histórico.')
+      toast.success('Movimentação cancelada e preservada no histórico.')
       if (details?.id === item.id) setDetails(null)
-      await load()
+      await refreshFinancialData()
     } catch (requestError) {
       setError(getApiError(requestError))
+      toast.error('Não foi possível cancelar esta movimentação.')
+    } finally {
+      setPendingAction('')
+    }
+  }
+
+  async function remove(item) {
+    const actionKey = `delete:${item.id}`
+    if (pendingAction) return
+    setPendingAction(actionKey)
+    try {
+      await transactionService.remove(item.id)
+      toast.success(item.status === 'COMPLETED' ? 'Movimentação cancelada e preservada no histórico.' : 'Movimentação excluída.')
+      if (details?.id === item.id) setDetails(null)
+      setDeleteTarget(null)
+      await refreshFinancialData()
+    } catch (requestError) {
+      setError(getApiError(requestError))
+      toast.error('Não foi possível excluir esta movimentação.')
+    } finally {
+      setPendingAction('')
     }
   }
 
   async function reverse(item) {
     if (!(await requestConfirmation({ title: 'Estornar transferência?', message: `A transferência de ${formatCurrency(item.amount, user.currency)} será revertida nas duas contas.`, confirmLabel: 'Estornar transferência', destructive: true, icon: '!' }))) return
+    const actionKey = `reverse:${item.id}`
+    if (pendingAction) return
+    setPendingAction(actionKey)
     try {
       await transferService.reverse(item.id)
-      setSuccessMessage('Transferência estornada com sucesso.')
-      await load()
+      toast.success('Transferência estornada com sucesso.')
+      if (transferDetails?.id === item.id) setTransferDetails(null)
+      await refreshFinancialData()
     } catch (requestError) {
       setError(getApiError(requestError))
+      toast.error('Não foi possível estornar a transferência.')
+    } finally {
+      setPendingAction('')
     }
   }
 
@@ -351,7 +417,6 @@ export function TransactionsPage() {
       </div>
 
       {error ? <div className="form-alert" role="alert">{error}</div> : null}
-      {successMessage ? <div className="form-alert form-alert-success" role="status">✓ {successMessage}</div> : null}
 
       {/* Modal / Card de Pagamento Rápido */}
       {payingItem ? (
@@ -466,7 +531,7 @@ export function TransactionsPage() {
                     creditCardId: null,
                     purchaseType: 'ONE_TIME',
                     installmentsCount: '',
-                    status: 'COMPLETED',
+                    status: 'PENDING',
                   }))
                 }
               >
@@ -539,7 +604,9 @@ export function TransactionsPage() {
               <input name="dueDate" value={movement.dueDate} onChange={changeMovement} type="date" />
             </label>
 
-            {movement.paymentMethod === 'CREDIT_CARD' ? (
+            {editingMovement ? (
+              <p className="form-help form-field-wide">A situação financeira é alterada somente pelas ações Pagar, Receber ou Cancelar.</p>
+            ) : movement.paymentMethod === 'CREDIT_CARD' ? (
               <p className="form-help form-field-wide">
                 💳 Compra no cartão: consome limite e é alocada na fatura. O saldo bancário só é debitado no pagamento da fatura.
               </p>
@@ -770,6 +837,12 @@ export function TransactionsPage() {
                 <dd>{details.creditCard.name}</dd>
               </div>
             ) : null}
+            {details.recurringTransaction ? (
+              <div>
+                <dt>Recorrência</dt>
+                <dd>Gerado por uma recorrência ({details.recurringTransaction.frequency})</dd>
+              </div>
+            ) : null}
           </dl>
           {details.notes ? (
             <p className="detail-notes">
@@ -791,9 +864,10 @@ export function TransactionsPage() {
               </div>
             </section>
           ) : null}
+          {details.recurringTransaction ? <p className="form-help">Alterações nesta ocorrência não modificam a regra. <Link to="/recorrencias">Gerenciar recorrência</Link></p> : null}
 
           {/* Ação rápida de pagar direto dos detalhes se estiver aberto */}
-          {details.status !== 'COMPLETED' && details.status !== 'CANCELLED' ? (
+          {details.status !== 'COMPLETED' && details.status !== 'CANCELLED' && !details.cardPurchaseId ? (
             <div className="detail-actions-footer">
               <button
                 className="primary-button inline-button"
@@ -804,6 +878,24 @@ export function TransactionsPage() {
               </button>
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {transferDetails ? (
+        <section className="editor-card" aria-labelledby="transfer-details-title">
+          <div className="editor-heading">
+            <div><p className="eyebrow">Detalhes da transferência</p><h2 id="transfer-details-title">{transferDetails.fromAccount.name} → {transferDetails.toAccount.name}</h2></div>
+            <button className="text-button" type="button" onClick={() => setTransferDetails(null)}>Fechar</button>
+          </div>
+          <dl className="details-grid">
+            <div><dt>Conta de origem</dt><dd>{transferDetails.fromAccount.name}</dd></div>
+            <div><dt>Conta de destino</dt><dd>{transferDetails.toAccount.name}</dd></div>
+            <div><dt>Valor</dt><dd><strong>{formatCurrency(transferDetails.amount, user.currency)}</strong></dd></div>
+            <div><dt>Data</dt><dd>{formatDate(transferDetails.date)}</dd></div>
+            <div><dt>Situação</dt><dd><span className={`status-tag ${transferDetails.isReversed ? 'status-cancelled' : 'status-completed'}`}>{transferDetails.isReversed ? 'Estornada' : 'Concluída'}</span></dd></div>
+          </dl>
+          {transferDetails.description ? <p className="detail-notes"><strong>Descrição:</strong><br />{transferDetails.description}</p> : null}
+          {!transferDetails.isReversed ? <div className="detail-actions-footer"><button className="danger-button inline-button" type="button" disabled={Boolean(pendingAction)} onClick={() => reverse(transferDetails)}>{pendingAction === `reverse:${transferDetails.id}` ? 'Estornando...' : 'Estornar transferência'}</button></div> : null}
         </section>
       ) : null}
 
@@ -821,21 +913,21 @@ export function TransactionsPage() {
               <button
                 type="button"
                 className={typeFilter === 'ALL' ? 'is-selected' : ''}
-                onClick={() => setTypeFilter('ALL')}
+                onClick={() => { setTypeFilter('ALL'); setPage(1) }}
               >
                 Todas
               </button>
               <button
                 type="button"
                 className={typeFilter === 'EXPENSE' ? 'is-selected expense' : ''}
-                onClick={() => setTypeFilter('EXPENSE')}
+                onClick={() => { setTypeFilter('EXPENSE'); setPage(1) }}
               >
                 Despesas
               </button>
               <button
                 type="button"
                 className={typeFilter === 'INCOME' ? 'is-selected income' : ''}
-                onClick={() => setTypeFilter('INCOME')}
+                onClick={() => { setTypeFilter('INCOME'); setPage(1) }}
               >
                 Receitas
               </button>
@@ -846,35 +938,52 @@ export function TransactionsPage() {
               <button
                 type="button"
                 className={statusFilter === 'ALL' ? 'is-selected' : ''}
-                onClick={() => setStatusFilter('ALL')}
+                onClick={() => { setStatusFilter('ALL'); setPage(1) }}
               >
                 Todos os status
               </button>
               <button
                 type="button"
                 className={statusFilter === 'OPEN' ? 'is-selected is-pending-filter' : ''}
-                onClick={() => setStatusFilter('OPEN')}
+                onClick={() => { setStatusFilter('OPEN'); setPage(1) }}
               >
                 {typeFilter === 'EXPENSE' ? 'Abertas' : typeFilter === 'INCOME' ? 'A receber' : 'Pendentes'}
               </button>
               <button
                 type="button"
                 className={statusFilter === 'SETTLED' ? 'is-selected is-settled-filter' : ''}
-                onClick={() => setStatusFilter('SETTLED')}
+                onClick={() => { setStatusFilter('SETTLED'); setPage(1) }}
               >
                 {typeFilter === 'EXPENSE' ? 'Pagas' : typeFilter === 'INCOME' ? 'Recebidas' : 'Concluídas'}
               </button>
+              <button
+                type="button"
+                className={statusFilter === 'CANCELLED' ? 'is-selected' : ''}
+                onClick={() => { setStatusFilter('CANCELLED'); setPage(1) }}
+              >
+                Canceladas
+              </button>
             </div>
 
-            {/* Busca rápida */}
+            <div className="advanced-filters" aria-label="Filtros avançados">
+              <label><span>Período de</span><input type="date" value={fromFilter} onChange={(event) => { setFromFilter(event.target.value); setPage(1) }} /></label>
+              <label><span>até</span><input type="date" value={toFilter} min={fromFilter || undefined} onChange={(event) => { setToFilter(event.target.value); setPage(1) }} /></label>
+              <label><span>Categoria</span><select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value); setPage(1) }}><option value="">Todas</option>{data.categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+              <label><span>Conta</span><select value={accountFilter} onChange={(event) => { setAccountFilter(event.target.value); setPage(1) }}><option value="">Todas</option>{data.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+              <label><span>Cartão</span><select value={cardFilter} onChange={(event) => { setCardFilter(event.target.value); setPage(1) }}><option value="">Todos</option>{creditCards.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}</select></label>
+              <label><span>Forma</span><select value={paymentMethodFilter} onChange={(event) => { setPaymentMethodFilter(event.target.value); setPage(1) }}><option value="">Todas</option>{paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label><span>Ordenar</span><select value={sortFilter} onChange={(event) => { setSortFilter(event.target.value); setPage(1) }}><option value="DATE_DESC">Mais recentes</option><option value="DATE_ASC">Mais antigas</option><option value="DUE_DATE_ASC">Vencimento</option><option value="AMOUNT_DESC">Maior valor</option><option value="AMOUNT_ASC">Menor valor</option><option value="DESCRIPTION_ASC">Descrição</option></select></label>
+            </div>
+
             <div className="search-filter">
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por descrição, conta..."
+                onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
+                placeholder="Buscar descrição, categoria ou observação"
                 aria-label="Buscar movimentação"
               />
+              {hasActiveFilters ? <button className="text-button" type="button" onClick={clearFilters}>Limpar filtros</button> : null}
             </div>
           </div>
         </div>
@@ -883,8 +992,9 @@ export function TransactionsPage() {
 
         {!isLoading && filteredTransactions.length === 0 ? (
           <EmptyState
-            title="Nenhum lançamento encontrado"
-            description="Nenhum lançamento corresponde aos filtros selecionados."
+            title={hasActiveFilters ? 'Nenhuma movimentação encontrada com os filtros atuais.' : 'Nenhuma movimentação encontrada.'}
+            description={hasActiveFilters ? 'Ajuste os filtros ou limpe-os para ver outros lançamentos.' : 'Comece registrando uma receita ou despesa.'}
+            action={hasActiveFilters ? <button className="secondary-button inline-button" type="button" onClick={clearFilters}>Limpar filtros</button> : <button className="primary-button inline-button" type="button" onClick={() => { setMode('movement'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>Adicionar movimentação</button>}
           />
         ) : null}
 
@@ -893,6 +1003,15 @@ export function TransactionsPage() {
             {filteredTransactions.map((item) => {
               const statusInfo = getStatusInfo(item)
               const isOpen = item.status === 'PENDING' || item.status === 'OVERDUE'
+              const isCardPurchase = Boolean(item.cardPurchaseId || item.paymentMethod === 'CREDIT_CARD')
+              const actionIsPending = Boolean(pendingAction)
+              const actions = [
+                { label: 'Ver detalhes', onSelect: () => openDetails(item), disabled: actionIsPending },
+                ...(isCardPurchase ? [{ label: 'Gerenciar no cartão', onSelect: () => navigate('/cartoes'), disabled: actionIsPending }] : item.status !== 'CANCELLED' ? [{ label: item.recurringTransactionId ? 'Editar esta ocorrência' : 'Editar', onSelect: () => openMovementEditor(item), disabled: actionIsPending }] : []),
+                ...(isOpen && !isCardPurchase ? [{ label: item.type === 'EXPENSE' ? 'Pagar' : 'Receber', onSelect: () => startPayment(item), disabled: actionIsPending || isSubmitting }] : []),
+                ...(item.status !== 'CANCELLED' ? [{ label: pendingAction === `cancel:${item.id}` ? 'Cancelando...' : 'Cancelar', onSelect: () => cancel(item), destructive: true, disabled: actionIsPending }] : []),
+                ...(!item.creditCardInvoiceId ? [{ label: pendingAction === `delete:${item.id}` ? 'Excluindo...' : item.recurringTransactionId ? 'Excluir esta ocorrência' : 'Excluir', onSelect: () => setDeleteTarget(item), destructive: true, disabled: actionIsPending }] : []),
+              ]
               return (
                 <article
                   className="movement-row clickable-row"
@@ -919,38 +1038,19 @@ export function TransactionsPage() {
                   </div>
 
                   <div className="row-actions" onClick={(e) => e.stopPropagation()}>
-                    {isOpen ? (
-                      <button
-                        type="button"
-                        className="pay-action-button"
-                        title={item.type === 'EXPENSE' ? 'Pagar despesa' : 'Receber receita'}
-                        onClick={() => startPayment(item)}
-                      >
-                        {item.type === 'EXPENSE' ? '✓ Pagar' : '✓ Receber'}
-                      </button>
-                    ) : null}
-
-                    {item.status !== 'CANCELLED' ? (
-                      <button type="button" onClick={() => openMovementEditor(item)}>
-                        Editar
-                      </button>
-                    ) : null}
-
-                    {item.status !== 'COMPLETED' && item.status !== 'CANCELLED' ? (
-                      <button
-                        className="danger-action"
-                        type="button"
-                        title="Cancelar lançamento e manter o histórico"
-                        onClick={() => cancel(item)}
-                      >
-                        Cancelar
-                      </button>
-                    ) : null}
+                    <ActionMenu label={`Ações de ${item.description}`} items={actions} showPrimary={false} />
                   </div>
                 </article>
               )
             })}
           </div>
+        ) : null}
+        {!isLoading && pagination.total > pagination.limit ? (
+          <nav className="pagination-controls" aria-label="Paginação de movimentações">
+            <button className="secondary-button" type="button" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Anterior</button>
+            <span>Página {pagination.page} de {Math.ceil(pagination.total / pagination.limit)}</span>
+            <button className="secondary-button" type="button" disabled={page >= Math.ceil(pagination.total / pagination.limit)} onClick={() => setPage((current) => current + 1)}>Próxima</button>
+          </nav>
         ) : null}
       </section>
 
@@ -981,9 +1081,7 @@ export function TransactionsPage() {
                 </div>
                 <div className="row-actions">
                   {!item.isReversed ? (
-                    <button className="danger-action" type="button" onClick={() => reverse(item)}>
-                      Estornar
-                    </button>
+                    <ActionMenu label="Ações da transferência" showPrimary={false} items={[{ label: 'Ver detalhes', disabled: Boolean(pendingAction), onSelect: () => setTransferDetails(item) }, { label: pendingAction === `reverse:${item.id}` ? 'Estornando...' : 'Estornar', destructive: true, disabled: Boolean(pendingAction), onSelect: () => reverse(item) }]} />
                   ) : null}
                 </div>
               </article>
@@ -991,6 +1089,19 @@ export function TransactionsPage() {
           </div>
         </section>
       ) : null}
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title="Excluir movimentação?"
+        message={deleteTarget ? `“${deleteTarget.description} - ${formatCurrency(deleteTarget.amount, user.currency)}”. ${deleteTarget.status === 'COMPLETED' ? 'Como ela já possui impacto financeiro, será cancelada e permanecerá no histórico; o saldo será revertido.' : 'Esta ação não poderá ser desfeita.'}` : ''}
+        cancelLabel="Cancelar"
+        confirmLabel="Excluir"
+        destructive
+        loading={pendingAction === `delete:${deleteTarget?.id}`}
+        loadingLabel="Excluindo..."
+        icon="!"
+        onCancel={() => { if (!pendingAction) setDeleteTarget(null) }}
+        onConfirm={() => { if (deleteTarget) void remove(deleteTarget) }}
+      />
     </section>
   )
 }

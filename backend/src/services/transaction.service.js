@@ -11,6 +11,7 @@ const relationSelect = {
 
 const detailRelationSelect = {
   ...relationSelect,
+  recurringTransaction: { select: { id: true, description: true, frequency: true, status: true } },
   cardPurchase: {
     select: {
       id: true, description: true, totalAmount: true, purchaseDate: true, installmentsCount: true,
@@ -85,10 +86,30 @@ export async function listTransactions(userId, filters) {
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.accountId ? { accountId: filters.accountId } : {}),
     ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+    ...(filters.creditCardId ? { creditCardId: filters.creditCardId } : {}),
+    ...(filters.paymentMethod ? { paymentMethod: filters.paymentMethod } : {}),
+    ...(filters.state === "OPEN" ? { status: { in: ["PENDING", "OVERDUE"] } } : {}),
+    ...(filters.state === "SETTLED" ? { status: "COMPLETED" } : {}),
+    ...(filters.state === "CANCELLED" ? { status: "CANCELLED" } : {}),
     ...((filters.from || filters.to) ? { date: { ...(filters.from ? { gte: asDate(filters.from) } : {}), ...(filters.to ? { lte: asDate(filters.to) } : {}) } } : {}),
+    ...(filters.q ? {
+      OR: [
+        { description: { contains: filters.q, mode: "insensitive" } },
+        { notes: { contains: filters.q, mode: "insensitive" } },
+        { category: { name: { contains: filters.q, mode: "insensitive" } } },
+      ],
+    } : {}),
   };
+  const orderBy = {
+    DATE_DESC: [{ date: "desc" }, { createdAt: "desc" }],
+    DATE_ASC: [{ date: "asc" }, { createdAt: "asc" }],
+    DUE_DATE_ASC: [{ dueDate: { sort: "asc", nulls: "last" } }, { date: "desc" }],
+    AMOUNT_DESC: [{ amount: "desc" }, { date: "desc" }],
+    AMOUNT_ASC: [{ amount: "asc" }, { date: "desc" }],
+    DESCRIPTION_ASC: [{ description: "asc" }, { date: "desc" }],
+  }[filters.sort];
   const [transactions, total] = await prisma.$transaction([
-    prisma.transaction.findMany({ where, include: relationSelect, orderBy: [{ date: "desc" }, { createdAt: "desc" }], skip: (filters.page - 1) * filters.limit, take: filters.limit }),
+    prisma.transaction.findMany({ where, include: relationSelect, orderBy, skip: (filters.page - 1) * filters.limit, take: filters.limit }),
     prisma.transaction.count({ where }),
   ]);
   return { transactions: transactions.map(serializeTransaction), pagination: { page: filters.page, limit: filters.limit, total } };

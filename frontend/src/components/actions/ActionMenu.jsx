@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-export function ActionMenu({ label = "Ações da conta", items }) {
+export function ActionMenu({ label = "Ações", items, showPrimary = true }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
-  const primaryItems = items.slice(0, 2);
-  const secondaryItems = items.slice(2);
+  const primaryItems = showPrimary ? items.slice(0, 2) : [];
+  const secondaryItems = showPrimary ? items.slice(2) : items;
 
   useEffect(() => {
     function closeOnOutsideClick(event) {
@@ -33,13 +33,13 @@ export function ActionMenu({ label = "Ações da conta", items }) {
       <div className="action-menu-dropdown">
         <button
           type="button"
-          className="secondary-button action-menu-trigger"
+          className={`secondary-button action-menu-trigger ${showPrimary ? "" : "icon-button"}`}
           aria-label={label}
           aria-expanded={open}
           aria-haspopup="menu"
           onClick={() => setOpen((current) => !current)}
         >
-          Mais ações <span aria-hidden="true">⋮</span>
+          {showPrimary ? <>Mais ações <span aria-hidden="true">⋮</span></> : <span aria-hidden="true">⋮</span>}
         </button>
         {open ? (
           <div className="action-menu-panel" role="menu" aria-label={label}>

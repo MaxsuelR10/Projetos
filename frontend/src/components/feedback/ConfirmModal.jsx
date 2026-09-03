@@ -8,6 +8,7 @@ export function ConfirmModal({
   confirmLabel = 'Confirmar',
   destructive = false,
   loading = false,
+  loadingLabel = 'Aguarde...',
   icon,
   onCancel,
   onConfirm,
@@ -57,7 +58,7 @@ export function ConfirmModal({
         <div className="confirm-modal-actions">
           <button ref={cancelButtonRef} className="secondary-button" type="button" disabled={loading} onClick={onCancel}>{cancelLabel}</button>
           <button className={destructive ? 'danger-button' : 'primary-button'} type="button" disabled={loading} onClick={onConfirm}>
-            {loading ? 'Aguarde...' : confirmLabel}
+            {loading ? loadingLabel : confirmLabel}
           </button>
         </div>
       </section>
