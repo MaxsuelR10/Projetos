@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '../components/feedback/EmptyState.jsx'
+import { FormDrawer } from '../components/feedback/FormDrawer.jsx'
 import { categoryService } from '../services/category.service.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { useConfirm } from '../hooks/useConfirm.js'
@@ -181,8 +182,7 @@ export function CategoriesPage() {
       {error ? <div className="form-alert" role="alert">{error}</div> : null}
 
       {categoryEditor ? (
-        <section className="editor-card" aria-labelledby="category-form-title">
-          <div className="editor-heading"><div><p className="eyebrow">{categoryEditor.id ? 'Editar categoria' : 'Nova categoria'}</p><h2 id="category-form-title">{categoryEditor.id ? categoryEditor.name : 'Organizar categoria'}</h2></div><button className="text-button" type="button" onClick={closeEditors}>Cancelar</button></div>
+        <FormDrawer open eyebrow={categoryEditor.id ? 'Editar categoria' : 'Nova categoria'} title={categoryEditor.id ? categoryEditor.name : 'Organizar categoria'} onClose={closeEditors}>
           <form className="entity-form compact-form" onSubmit={submitCategory}>
             <label className="form-field"><span>Nome</span><input value={categoryForm.name} onChange={(event) => setCategoryForm((current) => ({ ...current, name: event.target.value }))} required minLength="2" maxLength="100" placeholder="Ex.: Restaurantes" /></label>
             <label className="form-field"><span>Tipo</span><select value={categoryForm.type} onChange={(event) => setCategoryForm((current) => ({ ...current, type: event.target.value }))}><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></label>
@@ -190,19 +190,18 @@ export function CategoriesPage() {
             <label className="form-field"><span>Ícone ou apelido visual</span><input value={categoryForm.icon} onChange={(event) => setCategoryForm((current) => ({ ...current, icon: event.target.value }))} maxLength="60" placeholder="Ex.: 🍽️" /></label>
             <button className="primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Salvando...' : categoryEditor.id ? 'Salvar categoria' : 'Criar categoria'}</button>
           </form>
-        </section>
+        </FormDrawer>
       ) : null}
 
       {subcategoryEditor ? (
-        <section className="editor-card" aria-labelledby="subcategory-form-title">
-          <div className="editor-heading"><div><p className="eyebrow">{subcategoryEditor.subcategory ? 'Editar subcategoria' : 'Nova subcategoria'}</p><h2 id="subcategory-form-title">{subcategoryEditor.category.name}</h2></div><button className="text-button" type="button" onClick={closeEditors}>Cancelar</button></div>
+        <FormDrawer open eyebrow={subcategoryEditor.subcategory ? 'Editar subcategoria' : 'Nova subcategoria'} title={subcategoryEditor.category.name} onClose={closeEditors}>
           <form className="entity-form compact-form" onSubmit={submitSubcategory}>
             <label className="form-field"><span>Nome</span><input value={subcategoryForm.name} onChange={(event) => setSubcategoryForm((current) => ({ ...current, name: event.target.value }))} required minLength="2" maxLength="100" placeholder="Ex.: Aluguel" /></label>
             <label className="form-field color-field"><span>Cor</span><input type="color" value={subcategoryForm.color} onChange={(event) => setSubcategoryForm((current) => ({ ...current, color: event.target.value }))} /></label>
             <label className="form-field"><span>Ícone ou apelido visual</span><input value={subcategoryForm.icon} onChange={(event) => setSubcategoryForm((current) => ({ ...current, icon: event.target.value }))} maxLength="60" placeholder="Ex.: 🏠" /></label>
             <button className="primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Salvando...' : subcategoryEditor.subcategory ? 'Salvar subcategoria' : 'Criar subcategoria'}</button>
           </form>
-        </section>
+        </FormDrawer>
       ) : null}
 
       {isLoading ? <p className="loading-inline">Carregando categorias...</p> : null}

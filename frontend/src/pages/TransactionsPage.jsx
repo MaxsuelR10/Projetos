@@ -15,6 +15,7 @@ import { useConfirm } from '../hooks/useConfirm.js'
 import { useToast } from '../hooks/useToast.js'
 import { ActionMenu } from '../components/actions/ActionMenu.jsx'
 import { ConfirmModal } from '../components/feedback/ConfirmModal.jsx'
+import { FormDrawer } from '../components/feedback/FormDrawer.jsx'
 import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 
 const today = new Date().toISOString().slice(0, 10)
@@ -94,6 +95,7 @@ export function TransactionsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [editingMovement, setEditingMovement] = useState(null)
+  const [isMovementFormOpen, setIsMovementFormOpen] = useState(false)
   const [payingItem, setPayingItem] = useState(null)
   const [payAccount, setPayAccount] = useState('')
   const [payDate, setPayDate] = useState(today)
@@ -221,7 +223,15 @@ export function TransactionsPage() {
 
   function closeMovementEditor() {
     setEditingMovement(null)
+    setIsMovementFormOpen(false)
     setMovement((current) => ({ ...initialMovement, type: current.type, accountId: current.accountId, date: today }))
+  }
+
+  function openNewMovement() {
+    setEditingMovement(null)
+    setMode('movement')
+    setMovement((current) => ({ ...initialMovement, accountId: current.accountId, date: today }))
+    setIsMovementFormOpen(true)
   }
 
   function openMovementEditor(item) {
@@ -231,6 +241,7 @@ export function TransactionsPage() {
     }
     setMode('movement')
     setEditingMovement(item)
+    setIsMovementFormOpen(true)
     setMovement({
       type: item.type,
       accountId: item.accountId,
@@ -313,6 +324,7 @@ export function TransactionsPage() {
       })
       setTransfer((current) => ({ ...initialTransfer, fromAccountId: current.fromAccountId, date: today }))
       toast.success('Transferência realizada com sucesso.')
+      setIsMovementFormOpen(false)
       await refreshFinancialData()
     } catch (requestError) {
       setError(getApiError(requestError))
@@ -408,12 +420,13 @@ export function TransactionsPage() {
 
   return (
     <section className="page-stack">
-      <div className="page-heading">
+      <div className="page-heading with-action">
         <div>
           <p className="eyebrow">Movimentações · Entradas e Saídas</p>
           <h1>Registre seu dinheiro</h1>
           <p>Lançar receitas, despesas e transferências de forma rápida e segura.</p>
         </div>
+        <button className="primary-button inline-button" type="button" onClick={openNewMovement}>+ Adicionar movimentação</button>
       </div>
 
       {error ? <div className="form-alert" role="alert">{error}</div> : null}
@@ -469,6 +482,13 @@ export function TransactionsPage() {
         </section>
       ) : null}
 
+      <FormDrawer
+        open={isMovementFormOpen}
+        eyebrow={editingMovement ? 'Editar lançamento' : 'Novo lançamento'}
+        title={editingMovement ? editingMovement.description : mode === 'transfer' ? 'Transferir entre contas' : 'Adicionar movimentação'}
+        wide
+        onClose={closeMovementEditor}
+      >
       {/* Seletor de Modo: Movimentação vs Transferência */}
       <div className="segmented-control transaction-mode" aria-label="Tipo de lançamento">
         <button
@@ -768,6 +788,7 @@ export function TransactionsPage() {
           </form>
         </section>
       )}
+      </FormDrawer>
 
       {/* Detalhes do Lançamento */}
       {details ? (

@@ -106,6 +106,15 @@ describe.sequential("resultado mensal do dashboard", () => {
       monthlyExpense: "0",
       monthlyResult: "0",
     });
+
+    const chartRange = await agent.get(`/api/dashboard?month=${month}&months=3`);
+    expect(chartRange.status).toBe(200);
+    expect(chartRange.body.monthlySeries).toHaveLength(3);
+    expect(chartRange.body.monthlySeries.at(-1)).toMatchObject({
+      label: `${month.slice(5, 7)}/${month.slice(0, 4)}`,
+      income: "3000",
+      expense: "865.67",
+    });
   });
 
   it("atualiza o resultado após criar, editar, cancelar, pagar e excluir lançamentos", async () => {

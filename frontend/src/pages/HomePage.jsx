@@ -9,6 +9,7 @@ import { FINANCIAL_DATA_CHANGED } from "../utils/financial-events.js";
 export function HomePage() {
   const { user } = useAuth();
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [chartMonths, setChartMonths] = useState(6);
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [hoveredSeries, setHoveredSeries] = useState(null);
 
@@ -16,16 +17,16 @@ export function HomePage() {
     let active = true;
     setState((current) => ({ ...current, loading: true, error: "" }));
     dashboardService
-      .get(month)
+      .get(month, chartMonths)
       .then((data) => active && setState({ loading: false, error: "", data }))
       .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
     return () => { active = false; };
-  }, [month]);
+  }, [chartMonths, month]);
 
   useEffect(() => {
     let active = true;
     dashboardService
-      .get(month)
+      .get(month, chartMonths)
       .then((data) => active && setState({ loading: false, error: "", data }))
       .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
     window.addEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
@@ -33,7 +34,7 @@ export function HomePage() {
       active = false;
       window.removeEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
     };
-  }, [loadDashboard, month]);
+  }, [chartMonths, loadDashboard, month]);
 
   const data = state.data;
   const max = data
@@ -185,6 +186,15 @@ export function HomePage() {
               <div>
                 <p className="eyebrow">Comparativo Mensal</p>
                 <h2>Receitas x Despesas</h2>
+                <label className="chart-range-filter">
+                  <span>Período do gráfico</span>
+                  <select value={chartMonths} onChange={(event) => { setHoveredSeries(null); setChartMonths(Number(event.target.value)) }}>
+                    <option value={1}>Este mês</option>
+                    <option value={3}>Últimos 3 meses</option>
+                    <option value={6}>Últimos 6 meses</option>
+                    <option value={12}>Este ano / últimos 12 meses</option>
+                  </select>
+                </label>
               </div>
               {activeMonthData ? (
                 <div className="chart-active-summary" aria-live="polite">

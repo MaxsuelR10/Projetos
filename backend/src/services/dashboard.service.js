@@ -72,11 +72,11 @@ async function getCashPeriodTotals(userId, range) {
   return { income, expense, categories };
 }
 
-export async function getDashboard(userId, month) {
+export async function getDashboard(userId, month, months = 6) {
   const range = monthBounds(month);
 
-  const seriesRanges = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(Date.UTC(range.year, range.month - 6 + index, 1));
+  const seriesRanges = Array.from({ length: months }, (_, index) => {
+    const date = new Date(Date.UTC(range.year, range.month - months + index, 1));
     return monthBounds(
       `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`,
     );
