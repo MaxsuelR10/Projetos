@@ -8,6 +8,7 @@ import { formatCurrency, parseCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 import { useConfirm } from '../hooks/useConfirm.js'
+import { useToast } from '../hooks/useToast.js'
 import { FormDrawer } from '../components/feedback/FormDrawer.jsx'
 
 const today = new Date().toISOString().slice(0, 10)
@@ -20,6 +21,7 @@ function formatDate(value) { return new Intl.DateTimeFormat('pt-BR', { timeZone:
 export function CardsPage() {
   const { user } = useAuth()
   const requestConfirmation = useConfirm()
+  const toast = useToast()
   const [cards, setCards] = useState([])
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
@@ -81,14 +83,14 @@ export function CardsPage() {
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
   }
   async function pay(invoice) {
-    if (!payment.accountId || !payment.categoryId) { setError('Selecione a conta e a categoria para registrar o pagamento.'); return }
+    if (!payment.accountId || !payment.categoryId) { toast.error('Selecione a conta e a categoria para registrar o pagamento.'); return }
     if (!(await requestConfirmation({ title: 'Pagar fatura?', message: `A fatura ${invoiceLabel(invoice)} no valor de ${formatCurrency(invoice.totalAmount, user.currency)} será debitada da conta selecionada.`, confirmLabel: 'Pagar fatura' }))) return
     setIsSubmitting(true); setError('')
-    try { await cardService.payInvoice(invoice.id, payment); await load() } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
+    try { await cardService.payInvoice(invoice.id, payment); toast.success('Fatura paga com sucesso.'); await load() } catch (requestError) { toast.error(getApiError(requestError)) } finally { setIsSubmitting(false) }
   }
   async function cancelPurchase(purchase) {
     if (!(await requestConfirmation({ title: 'Cancelar compra?', message: `A compra “${purchase.description}” e suas parcelas pendentes serão canceladas.`, confirmLabel: 'Cancelar compra', destructive: true, icon: '!' }))) return
-    try { await cardService.cancelPurchase(purchase.id); await load() } catch (requestError) { setError(getApiError(requestError)) }
+    try { await cardService.cancelPurchase(purchase.id); toast.success('Compra cancelada com sucesso.'); await load() } catch (requestError) { toast.error(getApiError(requestError)) }
   }
 
   return <section className="page-stack">
@@ -109,7 +111,37 @@ export function CardsPage() {
       <FormDrawer open={purchaseFormOpen} eyebrow="Nova compra" title={`Adicionar ao ${selectedCard.name}`} wide onClose={() => setPurchaseFormOpen(false)}><form className="entity-form" onSubmit={submitPurchase}>
         <label className="form-field"><span>Descrição</span><input name="description" value={purchaseForm.description} onChange={changePurchase} required minLength="2" placeholder="Ex.: Notebook" /></label><label className="form-field"><span>Estabelecimento</span><input name="merchant" value={purchaseForm.merchant} onChange={changePurchase} placeholder="Opcional" /></label><label className="form-field"><span>Valor total</span><CurrencyInput name="totalAmount" value={purchaseForm.totalAmount} onChange={changePurchase} required /></label><label className="form-field"><span>Data da compra</span><input name="purchaseDate" value={purchaseForm.purchaseDate} onChange={changePurchase} required type="date" /></label><label className="form-field"><span>Parcelas</span><input name="installmentsCount" value={purchaseForm.installmentsCount} onChange={changePurchase} required type="number" min="1" max="120" step="1" /></label><label className="form-field"><span>Categoria</span><select name="categoryId" value={purchaseForm.categoryId} onChange={changePurchase} required><option value="">Selecione</option>{expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>{selectedCategory?.subcategories?.length ? <label className="form-field"><span>Subcategoria</span><select name="subcategoryId" value={purchaseForm.subcategoryId} onChange={changePurchase}><option value="">Sem subcategoria</option>{selectedCategory.subcategories.filter((item) => item.isActive).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}<label className="form-field form-field-wide"><span>Observações</span><input name="notes" value={purchaseForm.notes} onChange={changePurchase} placeholder="Opcional" /></label><button className="primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Adicionando...' : 'Adicionar compra'}</button>
       </form></FormDrawer>
-      <section className="movement-history"><div className="section-heading"><div><p className="eyebrow">Faturas</p><h2>Próximos pagamentos</h2></div></div>{invoices.length === 0 ? <EmptyState title="Sem faturas" description="As compras aparecerão organizadas por fatura." /> : <div className="invoice-list">{invoices.map((invoice) => <article className="invoice-card" key={invoice.id}><div><span className={`status-tag status-${invoice.effectiveStatus.toLowerCase()}`}>{invoice.effectiveStatus === 'PAID' ? 'Paga' : invoice.effectiveStatus === 'CLOSED' ? 'Fechada' : 'Aberta'}</span><h3>Fatura {invoiceLabel(invoice)}</h3><small>Vence em {formatDate(invoice.dueDate)} · {invoice.installments.length} lançamento(s)</small></div><strong>{formatCurrency(invoice.totalAmount, user.currency)}</strong>{invoice.status !== 'PAID' ? <div className="invoice-pay"><select value={payment.accountId} onChange={(event) => setPayment((current) => ({ ...current, accountId: event.target.value }))}><option value="">Conta de pagamento</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select><select value={payment.categoryId} onChange={(event) => setPayment((current) => ({ ...current, categoryId: event.target.value }))}><option value="">Categoria do pagamento</option>{expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><button type="button" className="primary-button inline-button" disabled={isSubmitting} onClick={() => pay(invoice)}>Pagar</button></div> : null}<details><summary>Ver compras e parcelas</summary>{invoice.installments.map((item) => <p key={item.id}>{item.purchase.description} · {item.number}/{item.purchase.installmentsCount} · {formatCurrency(item.amount, user.currency)}</p>)}</details></article>)}</div>}</section>
+      <section className="movement-history">
+        <div className="section-heading"><div><p className="eyebrow">Faturas</p><h2>Próximos pagamentos</h2></div></div>
+        {invoices.length === 0 ? <EmptyState title="Sem faturas" description="As compras aparecerão organizadas por fatura." /> : <div className="invoice-list">
+          {invoices.map((invoice) => {
+            const hasAmountDue = Number(invoice.totalAmount) > 0
+            const isPayable = invoice.status !== 'PAID' && hasAmountDue
+            const statusLabel = invoice.effectiveStatus === 'PAID' ? 'Paga' : invoice.effectiveStatus === 'CLOSED' ? 'Fechada' : 'Aberta'
+
+            return <article className="invoice-card" key={invoice.id}>
+              <div>
+                <span className={`status-tag status-${invoice.effectiveStatus.toLowerCase()}`}>{statusLabel}</span>
+                <h3>Fatura {invoiceLabel(invoice)}</h3>
+                <small>Vence em {formatDate(invoice.dueDate)} · {invoice.installments.length} lançamento(s)</small>
+              </div>
+              <strong>{formatCurrency(invoice.totalAmount, user.currency)}</strong>
+              {isPayable ? <div className="invoice-pay">
+                <select value={payment.accountId} onChange={(event) => setPayment((current) => ({ ...current, accountId: event.target.value }))}>
+                  <option value="">Conta de pagamento</option>
+                  {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                </select>
+                <select value={payment.categoryId} onChange={(event) => setPayment((current) => ({ ...current, categoryId: event.target.value }))}>
+                  <option value="">Categoria do pagamento</option>
+                  {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+                <button type="button" className="primary-button inline-button" disabled={isSubmitting} onClick={() => pay(invoice)}>Pagar</button>
+              </div> : <p className="muted-copy">{invoice.status === 'PAID' ? 'Pagamento registrado.' : 'Sem valores pendentes para pagar.'}</p>}
+              <details><summary>Ver compras e parcelas</summary>{invoice.installments.map((item) => <p key={item.id}>{item.purchase.description} · {item.number}/{item.purchase.installmentsCount} · {formatCurrency(item.amount, user.currency)}</p>)}</details>
+            </article>
+          })}
+        </div>}
+      </section>
       <section className="movement-history"><div className="section-heading"><div><p className="eyebrow">Compras</p><h2>Compras no cartão</h2></div></div>{purchases.length === 0 ? <p className="muted-copy">Nenhuma compra registrada neste cartão.</p> : <div className="movement-list">{purchases.map((purchase) => <article className="movement-row" key={purchase.id}><span className="movement-symbol transfer">▣</span><div className="movement-info"><strong>{purchase.description}</strong><small>{purchase.category.name} · {purchase.installmentsCount}x · {formatDate(purchase.purchaseDate)}</small></div><div className="movement-value"><strong>{formatCurrency(purchase.totalAmount, user.currency)}</strong></div><div className="row-actions"><button type="button" className="danger-action" onClick={() => cancelPurchase(purchase)}>Cancelar</button></div></article>)}</div>}</section>
     </> : null}
   </section>

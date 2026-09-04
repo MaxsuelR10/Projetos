@@ -75,10 +75,16 @@ describe.sequential("cartões, parcelas e faturas", () => {
   it("preserva compras de fatura paga e permite cancelar compras futuras", async () => {
     const protectedPurchase = await agent.delete(`/api/card-purchases/${purchaseId}`);
     expect(protectedPurchase.status).toBe(409);
-    const future = await agent.post(`/api/cards/${cardId}/purchases`).send({ categoryId, description: "Fone", totalAmount: "60", purchaseDate: "2026-08-26", installmentsCount: 1 });
+    const future = await agent.post(`/api/cards/${cardId}/purchases`).send({ categoryId, description: "Fone", totalAmount: "60", purchaseDate: "2027-08-26", installmentsCount: 1 });
     expect(future.status).toBe(201);
     const cancelled = await agent.delete(`/api/card-purchases/${future.body.purchase.id}`);
     expect(cancelled.status).toBe(204);
+
+    const emptyInvoiceId = future.body.purchase.installments[0].invoice.id;
+    const emptyInvoicePayment = await agent.post(`/api/invoices/${emptyInvoiceId}/pay`).send({ accountId, categoryId, date: "2027-10-05", paymentMethod: "PIX" });
+    expect(emptyInvoicePayment.status).toBe(409);
+    expect(emptyInvoicePayment.body.error.code).toBe("INVOICE_EMPTY");
+
     const cards = await agent.get("/api/cards");
     expect(cards.body.cards[0].usedLimit).toBe("80");
   });
