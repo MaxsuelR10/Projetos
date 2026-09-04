@@ -1009,8 +1009,8 @@ export function TransactionsPage() {
                 { label: 'Ver detalhes', onSelect: () => openDetails(item), disabled: actionIsPending },
                 ...(isCardPurchase ? [{ label: 'Gerenciar no cartão', onSelect: () => navigate('/cartoes'), disabled: actionIsPending }] : item.status !== 'CANCELLED' ? [{ label: item.recurringTransactionId ? 'Editar esta ocorrência' : 'Editar', onSelect: () => openMovementEditor(item), disabled: actionIsPending }] : []),
                 ...(isOpen && !isCardPurchase ? [{ label: item.type === 'EXPENSE' ? 'Pagar' : 'Receber', onSelect: () => startPayment(item), disabled: actionIsPending || isSubmitting }] : []),
-                ...(item.status !== 'CANCELLED' ? [{ label: pendingAction === `cancel:${item.id}` ? 'Cancelando...' : 'Cancelar', onSelect: () => cancel(item), destructive: true, disabled: actionIsPending }] : []),
-                ...(!item.creditCardInvoiceId ? [{ label: pendingAction === `delete:${item.id}` ? 'Excluindo...' : item.recurringTransactionId ? 'Excluir esta ocorrência' : 'Excluir', onSelect: () => setDeleteTarget(item), destructive: true, disabled: actionIsPending }] : []),
+                ...(!item.creditCardInvoiceId && item.status !== 'CANCELLED' ? [{ label: pendingAction === `cancel:${item.id}` ? 'Cancelando...' : 'Cancelar', onSelect: () => cancel(item), destructive: true, disabled: actionIsPending }] : []),
+                ...(item.creditCardInvoiceId ? [{ label: 'Pagamento de fatura: gerencie em Cartões', onSelect: () => navigate('/cartoes'), disabled: actionIsPending }] : [{ label: pendingAction === `delete:${item.id}` ? 'Excluindo...' : item.recurringTransactionId ? 'Excluir esta ocorrência' : 'Excluir', onSelect: () => setDeleteTarget(item), destructive: true, disabled: actionIsPending }]),
               ]
               return (
                 <article

@@ -227,6 +227,9 @@ export async function cancelTransaction(userId, id) {
     const existing = await db.transaction.findFirst({ where: { id, userId } });
     if (!existing) throw new AppError("Lan\u00e7amento n\u00e3o encontrado", 404, "TRANSACTION_NOT_FOUND");
     if (existing.status === "CANCELLED") return;
+    if (existing.creditCardInvoiceId) {
+      throw new AppError("O pagamento de uma fatura deve ser tratado pela tela de Cart\u00f5es", 409, "INVOICE_PAYMENT_PROTECTED");
+    }
     if (existing.cardPurchaseId) await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
     if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
     await db.transaction.update({ where: { id }, data: { status: "CANCELLED", settledAt: null } });

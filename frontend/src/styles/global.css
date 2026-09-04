@@ -758,7 +758,7 @@ button:disabled {
   display: grid;
   border: 1px solid var(--color-line);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: visible;
   background: var(--color-surface);
 }
 
@@ -855,6 +855,7 @@ button:disabled {
 .action-menu-trigger { min-height: 2.5rem; padding: 0.45rem 0.7rem; }
 .icon-button { width: 2.5rem; min-height: 2.5rem; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--color-line); border-radius: 0.65rem; color: var(--color-ink); background: var(--color-surface); font-size: 1.25rem; line-height: 1; }
 .action-menu-panel { position: absolute; z-index: 20; top: calc(100% + 0.3rem); right: 0; display: grid; width: min(15rem, calc(100vw - 2.5rem)); padding: 0.3rem; border: 1px solid var(--color-line); border-radius: 0.75rem; background: var(--color-surface); box-shadow: var(--shadow-card); }
+.action-menu-panel.opens-upward { top: auto; bottom: calc(100% + 0.3rem); }
 .action-menu-panel button { min-height: 2.6rem; padding: 0.45rem 0.65rem; border: 0; border-radius: 0.5rem; text-align: left; color: var(--color-ink); background: transparent; font-weight: 700; }
 .action-menu-panel button:hover, .action-menu-panel button:focus-visible { background: var(--color-brand-soft); }
 .action-menu-panel button:disabled { opacity: 0.55; }

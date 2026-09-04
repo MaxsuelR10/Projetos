@@ -63,6 +63,13 @@ describe.sequential("cartões, parcelas e faturas", () => {
 
     const repeated = await agent.post(`/api/invoices/${september.id}/pay`).send({ accountId, categoryId, date: "2026-09-05" });
     expect(repeated.status).toBe(409); expect(repeated.body.error.code).toBe("INVOICE_ALREADY_PAID");
+
+    const transactions = await agent.get("/api/transactions?limit=100");
+    const paymentTransaction = transactions.body.transactions.find((transaction) => transaction.creditCardInvoiceId === september.id);
+    const cancelledPayment = await agent.patch(`/api/transactions/${paymentTransaction.id}/cancel`);
+    expect(cancelledPayment.status).toBe(409);
+    expect(cancelledPayment.body.error.code).toBe("INVOICE_PAYMENT_PROTECTED");
+    expect((await agent.get(`/api/accounts/${accountId}`)).body.account.currentBalance).toBe("960");
   });
 
   it("preserva compras de fatura paga e permite cancelar compras futuras", async () => {

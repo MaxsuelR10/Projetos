@@ -2,9 +2,22 @@ import { useEffect, useRef, useState } from "react";
 
 export function ActionMenu({ label = "Ações", items, showPrimary = true }) {
   const [open, setOpen] = useState(false);
+  const [opensUpward, setOpensUpward] = useState(false);
   const menuRef = useRef(null);
   const primaryItems = showPrimary ? items.slice(0, 2) : [];
   const secondaryItems = showPrimary ? items.slice(2) : items;
+
+  function toggleMenu(event) {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const triggerBounds = event.currentTarget.getBoundingClientRect();
+    const estimatedMenuHeight = secondaryItems.length * 44 + 18;
+    const spaceBelow = window.innerHeight - triggerBounds.bottom;
+    setOpensUpward(spaceBelow < estimatedMenuHeight && triggerBounds.top > spaceBelow);
+    setOpen(true);
+  }
 
   useEffect(() => {
     function closeOnOutsideClick(event) {
@@ -37,12 +50,12 @@ export function ActionMenu({ label = "Ações", items, showPrimary = true }) {
           aria-label={label}
           aria-expanded={open}
           aria-haspopup="menu"
-          onClick={() => setOpen((current) => !current)}
+          onClick={toggleMenu}
         >
           {showPrimary ? <>Mais ações <span aria-hidden="true">⋮</span></> : <span aria-hidden="true">⋮</span>}
         </button>
         {open ? (
-          <div className="action-menu-panel" role="menu" aria-label={label}>
+          <div className={`action-menu-panel ${opensUpward ? "opens-upward" : ""}`} role="menu" aria-label={label}>
           {secondaryItems.map((item) => (
             <button
               key={item.label}
