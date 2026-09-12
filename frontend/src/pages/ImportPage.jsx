@@ -8,6 +8,17 @@ import { getApiError } from '../utils/get-api-error.js'
 import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 import { useToast } from '../hooks/useToast.js'
 
+const IMPORT_BATCH_SIZE = 500
+
+function normalizeAmount(value) {
+  const input = String(value ?? '').trim()
+  if (!input) return ''
+  const numeric = input.replace(/[^\d,.-]/g, '')
+  const normalized = numeric.includes(',') ? numeric.replace(/\./g, '').replace(',', '.') : numeric.replace(/,/g, '')
+  const amount = Number(normalized)
+  return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : input
+}
+
 export function ImportPage() {
   const toast = useToast()
   const [accounts, setAccounts] = useState([])
@@ -38,21 +49,26 @@ export function ImportPage() {
     expense: accumulator.expense + (row.type === 'EXPENSE' ? Number(row.amount) : 0),
   }), { income: 0, expense: 0 }), [selectedRows])
 
+  function showError(message) {
+    setError(message)
+    toast.error(message)
+  }
+
   async function readFile(event) {
     const file = event.target.files?.[0]
     if (!file) return
     if (!accountId) {
-      setError('Selecione a conta que recebeu este extrato antes de anexar o arquivo.')
+      showError('Selecione a conta que recebeu este extrato antes de anexar o arquivo.')
       event.target.value = ''
       return
     }
     if (!/\.csv$/i.test(file.name)) {
-      setError('Por enquanto, importe o arquivo CSV exportado pelo banco. PDFs podem ter campos inconsistentes.')
+      showError('Por enquanto, importe o arquivo CSV exportado pelo banco. PDFs podem ter campos inconsistentes.')
       event.target.value = ''
       return
     }
     if (file.size > 1_000_000) {
-      setError('O arquivo deve ter no máximo 1 MB.')
+      showError('O arquivo deve ter no máximo 1 MB.')
       event.target.value = ''
       return
     }
@@ -67,7 +83,7 @@ export function ImportPage() {
       toast.success(`${preview.rows.length} lançamentos encontrados para conferência.`)
     } catch (requestError) {
       setRows([])
-      setError(getApiError(requestError, 'Não foi possível ler este CSV.'))
+      showError(getApiError(requestError, 'Não foi possível ler este CSV.'))
     } finally {
       setIsReading(false)
       event.target.value = ''
@@ -88,26 +104,42 @@ export function ImportPage() {
     }))
   }
 
+  function formatRowAmount(index) {
+    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, amount: normalizeAmount(row.amount) } : row))
+  }
+
   async function commit() {
     if (!selectedRows.length) {
-      setError('Selecione pelo menos um lançamento novo para importar.')
+      showError('Selecione pelo menos um lançamento novo para importar.')
       return
     }
     if (selectedRows.some((row) => !row.categoryId)) {
-      setError('Escolha uma categoria para todos os lançamentos selecionados.')
+      showError('Escolha uma categoria para todos os lançamentos selecionados.')
+      return
+    }
+    const invalidAmount = selectedRows.some((row) => !/^\d{1,15}(?:\.\d{1,4})?$/.test(normalizeAmount(row.amount)) || Number(normalizeAmount(row.amount)) <= 0)
+    if (invalidAmount) {
+      showError('Revise os valores: cada lançamento selecionado precisa ter um valor maior que zero.')
       return
     }
     setIsImporting(true)
     setError('')
     try {
-      const result = await importService.commitCsv(accountId, selectedRows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate })))
+      const payload = selectedRows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description: description.trim(), amount: normalizeAmount(amount), type, categoryId, duplicate }))
+      let imported = 0
+      let skipped = 0
+      for (let start = 0; start < payload.length; start += IMPORT_BATCH_SIZE) {
+        const result = await importService.commitCsv(accountId, payload.slice(start, start + IMPORT_BATCH_SIZE))
+        imported += result.imported
+        skipped += result.skipped
+      }
       notifyFinancialDataChanged()
-      toast.success(`${result.imported} lançamento(s) importado(s).${result.skipped ? ` ${result.skipped} duplicado(s) foram ignorados.` : ''}`)
+      toast.success(`${imported} lançamento(s) importado(s).${skipped ? ` ${skipped} duplicado(s) foram ignorados.` : ''}`)
       setRows([])
       setInvalidRows([])
       setFileName('')
     } catch (requestError) {
-      setError(getApiError(requestError, 'Não foi possível concluir a importação.'))
+      showError(getApiError(requestError, 'Não foi possível concluir a importação.'))
     } finally {
       setIsImporting(false)
     }
@@ -126,7 +158,7 @@ export function ImportPage() {
         <Link className="secondary-button inline-button" to="/movimentacoes">Ver movimentações</Link>
       </section>
 
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {error ? <section className="import-error" role="alert" aria-live="assertive"><div><strong>Não foi possível concluir a operação</strong><p>{error}</p></div><button type="button" aria-label="Fechar aviso de erro" onClick={() => setError('')}>×</button></section> : null}
 
       <section className="import-card">
         <div>
@@ -146,7 +178,7 @@ export function ImportPage() {
             <span>{isReading ? 'Lendo arquivo...' : 'Anexar CSV'}</span>
           </label>
         </div>
-        {accounts.length === 0 ? <p className="form-error">Crie uma conta antes de importar um extrato.</p> : null}
+        {accounts.length === 0 ? <p className="form-alert">Crie uma conta antes de importar um extrato.</p> : null}
       </section>
 
       {rows.length > 0 ? (
@@ -159,13 +191,13 @@ export function ImportPage() {
           {invalidRows.length ? <p className="import-warning">As linhas {invalidRows.join(', ')} não puderam ser lidas e serão ignoradas.</p> : null}
           <div className="import-table-wrap"><table className="import-table"><thead><tr><th>Importar</th><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>
             {rows.map((row, index) => (
-              <tr className={row.duplicate ? 'is-duplicate' : ''} key={`${row.rowNumber}-${row.description}`}>
+              <tr className={row.duplicate ? 'is-duplicate' : ''} key={row.rowNumber}>
                 <td><input aria-label={`Selecionar ${row.description}`} type="checkbox" checked={row.selected} disabled={row.duplicate} onChange={(event) => updateRow(index, 'selected', event.target.checked)} /></td>
-                <td>{new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(`${row.date}T00:00:00`))}</td>
-                <td>{row.description}{row.duplicate ? <small className="duplicate-note">Já existe</small> : null}</td>
+                <td><input aria-label={`Data de ${row.description}`} type="date" value={row.date} disabled={row.duplicate} onChange={(event) => updateRow(index, 'date', event.target.value)} /></td>
+                <td><input aria-label="Descrição" type="text" value={row.description} maxLength="180" disabled={row.duplicate} onChange={(event) => updateRow(index, 'description', event.target.value)} />{row.duplicate ? <small className="duplicate-note">Já existe</small> : null}</td>
                 <td><select value={row.type} disabled={row.duplicate} onChange={(event) => updateRow(index, 'type', event.target.value)}><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></td>
                 <td><select value={row.categoryId || ''} disabled={row.duplicate} onChange={(event) => updateRow(index, 'categoryId', event.target.value)}><option value="">Selecione</option>{categories.filter((category) => category.type === row.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
-                <td className={row.type === 'INCOME' ? 'income-text' : 'expense-text'}>{row.type === 'INCOME' ? '+' : '−'} {formatCurrency(row.amount)}</td>
+                <td className={row.type === 'INCOME' ? 'income-text' : 'expense-text'}><input aria-label={`Valor de ${row.description}`} type="text" inputMode="decimal" value={row.amount} disabled={row.duplicate} onChange={(event) => updateRow(index, 'amount', event.target.value)} onBlur={() => formatRowAmount(index)} /></td>
               </tr>
             ))}
           </tbody></table></div>

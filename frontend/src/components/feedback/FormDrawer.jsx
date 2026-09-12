@@ -4,13 +4,21 @@ export function FormDrawer({ open, title, eyebrow, children, onClose, wide = fal
   const dialogRef = useRef(null)
   const closeButtonRef = useRef(null)
   const previousFocusRef = useRef(null)
+  const onCloseRef = useRef(onClose)
+
+  // Form pages normally create onClose inline. Keep its latest version in a
+  // ref so typing in a controlled input does not re-run this effect and move
+  // focus back to the close button (which closes the mobile keyboard).
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   useEffect(() => {
     if (!open) return undefined
     previousFocusRef.current = document.activeElement
     closeButtonRef.current?.focus()
     function onKeyDown(event) {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
       if (event.key !== 'Tab') return
       const focusable = dialogRef.current?.querySelectorAll('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])')
       if (!focusable?.length) return
@@ -24,12 +32,12 @@ export function FormDrawer({ open, title, eyebrow, children, onClose, wide = fal
       document.removeEventListener('keydown', onKeyDown)
       previousFocusRef.current?.focus?.()
     }
-  }, [onClose, open])
+  }, [open])
 
   if (!open) return null
 
   return (
-    <div className="form-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="form-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseRef.current() }}>
       <section ref={dialogRef} className={`form-drawer ${wide ? 'is-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="form-drawer-title">
         <header className="form-drawer-header">
           <div>{eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}<h2 id="form-drawer-title">{title}</h2></div>
