@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth.js'
 const desktopNavigation = [
   { to: '/', label: 'Início', symbol: '⌂', end: true },
   { to: '/movimentacoes', label: 'Movimentações', symbol: '↕' },
+  { to: '/importar', label: 'Importar', symbol: '⇪' },
   { to: '/contas', label: 'Contas', symbol: '◫' },
   { to: '/cartoes', label: 'Cartões', symbol: '▣' },
   { to: '/recorrencias', label: 'Recorrências', symbol: '↻' },
@@ -21,6 +22,7 @@ const mobilePrimaryNav = [
 ]
 
 const moreNavItems = [
+  { to: '/importar', label: 'Importar extrato', symbol: '⇪', desc: 'Anexar CSV do seu banco' },
   { to: '/recorrencias', label: 'Recorrências & Fixas', symbol: '↻', desc: 'Gastos e receitas programadas' },
   { to: '/planejamento', label: 'Metas Financeiras', symbol: '◎', desc: 'Objetivos e reservas' },
   { to: '/investimentos', label: 'Investimentos', symbol: '↗', desc: 'Patrimônio aplicado' },

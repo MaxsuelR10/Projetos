@@ -8,6 +8,7 @@ import { TransactionsPage } from '../pages/TransactionsPage.jsx'
 import { RecurrencesPage } from '../pages/RecurrencesPage.jsx'
 import { PlanningPage } from '../pages/PlanningPage.jsx'
 import { InvestmentsPage } from '../pages/InvestmentsPage.jsx'
+import { ImportPage } from '../pages/ImportPage.jsx'
 import { LoginPage } from '../pages/auth/LoginPage.jsx'
 import { RegisterPage } from '../pages/auth/RegisterPage.jsx'
 import { ProtectedRoute } from './ProtectedRoute.jsx'
@@ -31,6 +32,7 @@ export function AppRoutes() {
           <Route path="/categorias" element={<CategoriesPage />} />
           <Route path="/cartoes" element={<CardsPage />} />
           <Route path="/movimentacoes" element={<TransactionsPage />} />
+          <Route path="/importar" element={<ImportPage />} />
           <Route path="/recorrencias" element={<RecurrencesPage />} />
           <Route path="/planejamento" element={<PlanningPage />} />
           <Route path="/investimentos" element={<InvestmentsPage />} />
