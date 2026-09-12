@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { normalizeName } from "../utils/normalize-name.js";
+import { createPurchaseInTransaction } from "./card.service.js";
 
 const columnAliases = {
   date: ["data", "date", "data da transacao", "data transacao", "data do lancamento"],
@@ -155,6 +156,12 @@ async function importContext(userId, accountId) {
   return { account, categories };
 }
 
+async function activeCreditCard(db, userId, creditCardId) {
+  const card = await db.creditCard.findFirst({ where: { id: creditCardId, userId, type: "CREDIT", isActive: true } });
+  if (!card) throw new AppError("Cartão de crédito ativo não encontrado", 404, "CARD_NOT_FOUND");
+  return card;
+}
+
 export async function previewCsvImport(userId, data) {
   const { account, categories } = await importContext(userId, data.accountId);
   const parsed = rowsFromCsv(data.content, categories);
@@ -178,9 +185,14 @@ export async function commitCsvImport(userId, data) {
   const categoryMap = new Map(categories.map((category) => [category.id, category]));
   const requested = data.rows.filter((row) => !row.duplicate);
   if (!requested.length) return { imported: 0, skipped: data.rows.length };
+  const isCreditCardImport = data.paymentMethod === "CREDIT_CARD";
+  if (isCreditCardImport && requested.some((row) => row.type !== "EXPENSE")) {
+    throw new AppError("Somente despesas podem ser importadas como compra no cartão de crédito", 400, "CARD_IMPORT_EXPENSE_ONLY");
+  }
   const dates = requested.map((row) => row.date).sort();
   try {
     return await prisma.$transaction(async (db) => {
+      if (isCreditCardImport) await activeCreditCard(db, userId, data.creditCardId);
       const existing = await db.transaction.findMany({
         where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
         select: { date: true, type: true, amount: true, description: true },
@@ -204,6 +216,27 @@ export async function commitCsvImport(userId, data) {
 
       if (!records.length) return { imported: 0, skipped };
 
+      if (isCreditCardImport) {
+        for (const record of records) {
+          const purchase = await createPurchaseInTransaction(db, userId, data.creditCardId, {
+            categoryId: record.categoryId,
+            description: record.description,
+            totalAmount: record.amount,
+            purchaseDate: record.date.toISOString().slice(0, 10),
+            installmentsCount: 1,
+            notes: "Importado de extrato CSV",
+          });
+          await db.transaction.create({ data: {
+            ...record,
+            paymentMethod: "CREDIT_CARD",
+            creditCardId: data.creditCardId,
+            cardPurchaseId: purchase.id,
+            settledAt: null,
+          } });
+        }
+        return { imported: records.length, skipped };
+      }
+
       // One insert and one balance adjustment prevent imports from timing out
       // when the database is remote and the statement contains many rows.
       await db.transaction.createMany({ data: records });
@@ -220,7 +253,7 @@ export async function commitCsvImport(userId, data) {
         },
       });
       return { imported: records.length, skipped };
-    });
+    }, { maxWait: 5_000, timeout: isCreditCardImport ? 30_000 : 10_000 });
   } catch (error) {
     if (error instanceof AppError) throw error;
     console.error("Erro ao importar extrato CSV", { code: error?.code, message: error?.message, userId, accountId: account.id });

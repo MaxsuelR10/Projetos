@@ -6,8 +6,8 @@ export const importService = {
     return response.data
   },
 
-  async commitCsv(accountId, rows) {
-    const response = await api.post('/imports/csv/commit', { accountId, rows })
+  async commitCsv(accountId, rows, paymentMethod = 'OTHER', creditCardId = null) {
+    const response = await api.post('/imports/csv/commit', { accountId, paymentMethod, creditCardId, rows })
     return response.data
   },
 }

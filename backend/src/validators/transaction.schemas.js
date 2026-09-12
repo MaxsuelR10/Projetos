@@ -60,10 +60,12 @@ export const updateTransactionSchema = z.object({
     status: transactionFields.status,
     paymentMethod: transactionFields.paymentMethod,
     creditCardId: transactionFields.creditCardId,
+    installmentsCount: z.coerce.number().int().min(1).max(120).optional(),
     notes: transactionFields.notes,
   }).strict().refine((data) => Object.keys(data).length > 0, "Informe ao menos um campo para atualizar"),
 }).superRefine(({ body }, context) => {
   if (body.paymentMethod === "CREDIT_CARD" && !body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Selecione o cartão de crédito utilizado" });
+  if (body.paymentMethod === "CREDIT_CARD" && body.type === "INCOME") context.addIssue({ code: "custom", path: ["body", "type"], message: "Cartão de crédito só pode ser usado em despesas" });
   if (body.paymentMethod !== undefined && body.paymentMethod !== "CREDIT_CARD" && body.creditCardId) context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Cartão informado para uma forma de pagamento diferente" });
 });
 

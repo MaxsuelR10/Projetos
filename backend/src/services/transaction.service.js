@@ -169,7 +169,45 @@ export async function updateTransaction(userId, id, data) {
     await validateClassification(db, userId, next);
 
     if (existing.cardPurchaseId && (data.paymentMethod !== undefined || data.creditCardId !== undefined || data.amount !== undefined || data.date !== undefined || data.categoryId !== undefined || data.subcategoryId !== undefined)) throw new AppError("Edite compras de cartao na tela de Cartoes", 409, "CARD_PURCHASE_EDIT_PROTECTED");
-    if (data.paymentMethod === "CREDIT_CARD" && existing.paymentMethod !== "CREDIT_CARD") throw new AppError("Para registrar uma compra no cartao, crie um novo lanÃ§amento", 409, "CARD_PAYMENT_METHOD_EDIT_PROTECTED");
+    const convertToCardPurchase = data.paymentMethod === "CREDIT_CARD" && existing.paymentMethod !== "CREDIT_CARD";
+    if (convertToCardPurchase && next.type !== "EXPENSE") {
+      throw new AppError("Somente despesas podem ser convertidas em compra no cartão", 400, "CARD_PURCHASE_EXPENSE_ONLY");
+    }
+    if (convertToCardPurchase) {
+      const purchase = await createPurchaseInTransaction(db, userId, data.creditCardId, {
+        categoryId: next.categoryId,
+        subcategoryId: next.subcategoryId,
+        description: data.description ?? existing.description,
+        totalAmount: next.amount,
+        purchaseDate: data.date ?? existing.date.toISOString().slice(0, 10),
+        installmentsCount: data.installmentsCount ?? 1,
+        notes: data.notes ?? existing.notes,
+      });
+      if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) {
+        await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
+      }
+      const converted = await db.transaction.update({
+        where: { id: existing.id },
+        data: {
+          ...(data.accountId !== undefined ? { accountId: data.accountId } : {}),
+          categoryId: next.categoryId,
+          subcategoryId: next.subcategoryId || null,
+          type: next.type,
+          description: data.description ?? existing.description,
+          amount: next.amount,
+          date: data.date ? asDate(data.date) : existing.date,
+          dueDate: data.dueDate !== undefined ? (data.dueDate ? asDate(data.dueDate) : null) : existing.dueDate,
+          status: "COMPLETED",
+          paymentMethod: "CREDIT_CARD",
+          creditCardId: data.creditCardId,
+          cardPurchaseId: purchase.id,
+          notes: data.notes !== undefined ? nullable(data.notes) : existing.notes,
+          settledAt: null,
+        },
+        include: relationSelect,
+      });
+      return converted;
+    }
     if (existing.accountId && affectsBalance(existing.status, existing.paymentMethod)) await applyBalance(db, existing.accountId, existing.type, existing.amount.toString(), -1);
     const updated = await db.transaction.update({
       where: { id: existing.id },

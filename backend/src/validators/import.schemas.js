@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { idSchema, positiveMoneySchema, transactionTypeSchema } from "./common.schemas.js";
+import { idSchema, paymentMethodSchema, positiveMoneySchema, transactionTypeSchema } from "./common.schemas.js";
 
 const importRowSchema = z.object({
   date: z.iso.date("Data inválida"),
@@ -15,5 +15,17 @@ export const previewCsvImportSchema = z.object({
 });
 
 export const commitCsvImportSchema = z.object({
-  body: z.object({ accountId: idSchema, rows: z.array(importRowSchema).min(1).max(500) }).strict(),
+  body: z.object({
+    accountId: idSchema,
+    paymentMethod: paymentMethodSchema.default("OTHER"),
+    creditCardId: idSchema.nullable().optional(),
+    rows: z.array(importRowSchema).min(1).max(500),
+  }).strict(),
+}).superRefine(({ body }, context) => {
+  if (body.paymentMethod === "CREDIT_CARD" && !body.creditCardId) {
+    context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Selecione o cartão de crédito utilizado" });
+  }
+  if (body.paymentMethod !== "CREDIT_CARD" && body.creditCardId) {
+    context.addIssue({ code: "custom", path: ["body", "creditCardId"], message: "Cartão informado para uma forma de pagamento diferente" });
+  }
 });

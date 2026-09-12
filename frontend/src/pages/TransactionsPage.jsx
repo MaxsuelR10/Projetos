@@ -53,6 +53,9 @@ function formatDate(value) {
 
 function getStatusInfo(item) {
   const isExpense = item.type === 'EXPENSE'
+  if (item.paymentMethod === 'CREDIT_CARD' || item.cardPurchaseId) {
+    return { label: 'Na fatura', className: 'status-pending' }
+  }
   if (item.status === 'COMPLETED') {
     return { label: isExpense ? 'Pago' : 'Recebido', className: 'status-completed' }
   }

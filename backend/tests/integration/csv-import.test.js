@@ -8,11 +8,16 @@ const agent = request.agent(app);
 const email = `importacao-${randomUUID()}@example.test`;
 let userId;
 let accountId;
+let cardId;
 
 afterAll(async () => {
   if (userId) {
     await prisma.$transaction([
       prisma.transaction.deleteMany({ where: { userId } }),
+      prisma.cardInstallment.deleteMany({ where: { userId } }),
+      prisma.cardPurchase.deleteMany({ where: { userId } }),
+      prisma.creditCardInvoice.deleteMany({ where: { userId } }),
+      prisma.creditCard.deleteMany({ where: { userId } }),
       prisma.subcategory.deleteMany({ where: { userId } }),
       prisma.category.deleteMany({ where: { userId } }),
       prisma.account.deleteMany({ where: { userId } }),
@@ -88,5 +93,45 @@ describe.sequential("importação de extrato CSV", () => {
     const storedAccount = await agent.get(`/api/accounts/${accountId}`);
     expect(storedAccount.status).toBe(200);
     expect(storedAccount.body.account.currentBalance).toBe("2580");
+  });
+
+  it("importa compras do cartão Nubank para a fatura sem baixar o saldo da conta", async () => {
+    const card = await agent.post("/api/cards").send({
+      name: "Nubank crédito", institution: "Nubank", type: "CREDIT", creditLimit: "2000", closingDay: 15, dueDay: 20,
+    });
+    expect(card.status).toBe(201);
+    cardId = card.body.card.id;
+
+    const content = "date,title,amount\n2026-09-05,Restaurante Nubank,-120.00";
+    const preview = await agent.post("/api/imports/csv/preview").send({ accountId, content });
+    expect(preview.status).toBe(200);
+    const rows = preview.body.rows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate }));
+    const imported = await agent.post("/api/imports/csv/commit").send({ accountId, paymentMethod: "CREDIT_CARD", creditCardId: cardId, rows });
+    expect(imported.status).toBe(201);
+    expect(imported.body).toMatchObject({ imported: 1, skipped: 0 });
+
+    const account = await agent.get(`/api/accounts/${accountId}`);
+    expect(account.body.account.currentBalance).toBe("2580");
+    const cards = await agent.get("/api/cards");
+    expect(cards.body.cards.find((cardItem) => cardItem.id === cardId)).toMatchObject({ usedLimit: "120", availableLimit: "1880" });
+    const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
+    expect(invoices.body.invoices[0]).toMatchObject({ referenceYear: 2026, referenceMonth: 9, totalAmount: "120" });
+    expect(invoices.body.invoices[0].dueDate).toContain("2026-09-20");
+  });
+
+  it("converte uma despesa importada em compra do cartão e estorna o saldo da conta", async () => {
+    const transactions = await agent.get(`/api/transactions?accountId=${accountId}&q=Mercado%20Central&limit=10`);
+    const importedExpense = transactions.body.transactions.find((item) => item.description === "Mercado Central");
+    const converted = await agent.patch(`/api/transactions/${importedExpense.id}`).send({
+      paymentMethod: "CREDIT_CARD", creditCardId: cardId, installmentsCount: 1,
+    });
+    expect(converted.status).toBe(200);
+    expect(converted.body.transaction).toMatchObject({ paymentMethod: "CREDIT_CARD", creditCardId: cardId });
+    expect(converted.body.transaction.cardPurchaseId).toBeTruthy();
+
+    const account = await agent.get(`/api/accounts/${accountId}`);
+    expect(account.body.account.currentBalance).toBe("3030");
+    const cards = await agent.get("/api/cards");
+    expect(cards.body.cards.find((cardItem) => cardItem.id === cardId)).toMatchObject({ usedLimit: "570", availableLimit: "1430" });
   });
 });

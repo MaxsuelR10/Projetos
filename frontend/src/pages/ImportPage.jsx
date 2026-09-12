@@ -3,12 +3,23 @@ import { Link } from 'react-router-dom'
 import { accountService } from '../services/account.service.js'
 import { importService } from '../services/import.service.js'
 import { categoryService } from '../services/category.service.js'
+import { cardService } from '../services/card.service.js'
 import { formatCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 import { useToast } from '../hooks/useToast.js'
 
 const IMPORT_BATCH_SIZE = 500
+const paymentMethods = [
+  ['OTHER', 'Outro'],
+  ['PIX', 'PIX'],
+  ['DEBIT_CARD', 'Cartão de débito'],
+  ['BOLETO', 'Boleto'],
+  ['BANK_TRANSFER', 'Transferência bancária'],
+  ['AUTOMATIC_DEBIT', 'Débito automático'],
+  ['CASH', 'Dinheiro'],
+  ['CREDIT_CARD', 'Cartão de crédito'],
+]
 
 function normalizeAmount(value) {
   const input = String(value ?? '').trim()
@@ -23,7 +34,10 @@ export function ImportPage() {
   const toast = useToast()
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
+  const [cards, setCards] = useState([])
   const [accountId, setAccountId] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('OTHER')
+  const [creditCardId, setCreditCardId] = useState('')
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState([])
   const [invalidRows, setInvalidRows] = useState([])
@@ -33,10 +47,11 @@ export function ImportPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([accountService.list('active'), categoryService.list('active')])
-      .then(([loadedAccounts, loadedCategories]) => {
+    Promise.all([accountService.list('active'), categoryService.list('active'), cardService.list('active')])
+      .then(([loadedAccounts, loadedCategories, loadedCards]) => {
         setAccounts(loadedAccounts)
         setCategories(loadedCategories)
+        setCards(loadedCards.filter((card) => card.type === 'CREDIT'))
         if (loadedAccounts.length === 1) setAccountId(loadedAccounts[0].id)
       })
       .catch((requestError) => setError(getApiError(requestError)))
@@ -117,6 +132,14 @@ export function ImportPage() {
       showError('Escolha uma categoria para todos os lançamentos selecionados.')
       return
     }
+    if (paymentMethod === 'CREDIT_CARD' && !creditCardId) {
+      showError('Selecione o cartão de crédito usado nestas compras.')
+      return
+    }
+    if (paymentMethod === 'CREDIT_CARD' && selectedRows.some((row) => row.type !== 'EXPENSE')) {
+      showError('Somente despesas podem ser importadas como compra no cartão de crédito.')
+      return
+    }
     const invalidAmount = selectedRows.some((row) => !/^\d{1,15}(?:\.\d{1,4})?$/.test(normalizeAmount(row.amount)) || Number(normalizeAmount(row.amount)) <= 0)
     if (invalidAmount) {
       showError('Revise os valores: cada lançamento selecionado precisa ter um valor maior que zero.')
@@ -129,7 +152,7 @@ export function ImportPage() {
       let imported = 0
       let skipped = 0
       for (let start = 0; start < payload.length; start += IMPORT_BATCH_SIZE) {
-        const result = await importService.commitCsv(accountId, payload.slice(start, start + IMPORT_BATCH_SIZE))
+        const result = await importService.commitCsv(accountId, payload.slice(start, start + IMPORT_BATCH_SIZE), paymentMethod, creditCardId || null)
         imported += result.imported
         skipped += result.skipped
       }
@@ -173,6 +196,22 @@ export function ImportPage() {
               {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
             </select>
           </label>
+          <label className="form-field">
+            <span>Forma de pagamento</span>
+            <select value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setCreditCardId('') }}>
+              {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          {paymentMethod === 'CREDIT_CARD' ? (
+            <label className="form-field">
+              <span>Cartão usado</span>
+              <select value={creditCardId} onChange={(event) => setCreditCardId(event.target.value)} required>
+                <option value="">Selecione o cartão</option>
+                {cards.map((card) => <option key={card.id} value={card.id}>{card.name}{card.institution ? ` · ${card.institution}` : ''}</option>)}
+              </select>
+              {!cards.length ? <small>Cadastre o cartão Nubank na tela Cartões antes de importar.</small> : null}
+            </label>
+          ) : null}
           <label className="file-picker">
             <input type="file" accept=".csv,text/csv" onChange={readFile} disabled={isReading || !accountId} />
             <span>{isReading ? 'Lendo arquivo...' : 'Anexar CSV'}</span>
