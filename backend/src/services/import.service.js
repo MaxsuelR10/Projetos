@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { normalizeName } from "../utils/normalize-name.js";
@@ -178,27 +179,51 @@ export async function commitCsvImport(userId, data) {
   const requested = data.rows.filter((row) => !row.duplicate);
   if (!requested.length) return { imported: 0, skipped: data.rows.length };
   const dates = requested.map((row) => row.date).sort();
-  return prisma.$transaction(async (db) => {
-    const existing = await db.transaction.findMany({
-      where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
-      select: { date: true, type: true, amount: true, description: true },
+  try {
+    return await prisma.$transaction(async (db) => {
+      const existing = await db.transaction.findMany({
+        where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
+        select: { date: true, type: true, amount: true, description: true },
+      });
+      const seen = new Set();
+      const records = [];
+      let skipped = data.rows.length - requested.length;
+
+      for (const row of requested) {
+        const category = categoryMap.get(row.categoryId);
+        if (!category || category.type !== row.type) throw new AppError("Uma categoria da importação não é válida", 400, "IMPORT_CATEGORY_INVALID");
+        const fingerprint = `${row.date}|${row.type}|${row.amount}|${normalized(row.description)}`;
+        if (seen.has(fingerprint) || existing.some((transaction) => isSameTransaction(transaction, row))) { skipped += 1; continue; }
+        seen.add(fingerprint);
+        const date = new Date(`${row.date}T00:00:00.000Z`);
+        records.push({
+          userId, accountId: account.id, categoryId: category.id, type: row.type, description: row.description,
+          amount: row.amount, date, status: "COMPLETED", paymentMethod: "OTHER", settledAt: date, notes: "Importado de extrato CSV",
+        });
+      }
+
+      if (!records.length) return { imported: 0, skipped };
+
+      // One insert and one balance adjustment prevent imports from timing out
+      // when the database is remote and the statement contains many rows.
+      await db.transaction.createMany({ data: records });
+      const netAmount = records.reduce(
+        (total, row) => row.type === "INCOME" ? total.plus(row.amount) : total.minus(row.amount),
+        new Prisma.Decimal(0),
+      );
+      await db.account.update({
+        where: { id: account.id },
+        data: {
+          currentBalance: netAmount.isNegative()
+            ? { decrement: netAmount.abs().toString() }
+            : { increment: netAmount.toString() },
+        },
+      });
+      return { imported: records.length, skipped };
     });
-    const seen = new Set();
-    let imported = 0;
-    let skipped = data.rows.length - requested.length;
-    for (const row of requested) {
-      const category = categoryMap.get(row.categoryId);
-      if (!category || category.type !== row.type) throw new AppError("Uma categoria da importação não é válida", 400, "IMPORT_CATEGORY_INVALID");
-      const fingerprint = `${row.date}|${row.type}|${row.amount}|${normalized(row.description)}`;
-      if (seen.has(fingerprint) || existing.some((transaction) => isSameTransaction(transaction, row))) { skipped += 1; continue; }
-      seen.add(fingerprint);
-      await db.transaction.create({ data: {
-        userId, accountId: account.id, categoryId: category.id, type: row.type, description: row.description,
-        amount: row.amount, date: new Date(`${row.date}T00:00:00.000Z`), status: "COMPLETED", paymentMethod: "OTHER", settledAt: new Date(`${row.date}T00:00:00.000Z`), notes: "Importado de extrato CSV",
-      } });
-      await db.account.update({ where: { id: account.id }, data: { currentBalance: row.type === "INCOME" ? { increment: row.amount } : { decrement: row.amount } } });
-      imported += 1;
-    }
-    return { imported, skipped };
-  });
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.error("Erro ao importar extrato CSV", { code: error?.code, message: error?.message, userId, accountId: account.id });
+    throw new AppError("Não foi possível salvar este extrato agora. Tente novamente em alguns instantes.", 500, "IMPORT_COMMIT_FAILED");
+  }
 }

@@ -70,4 +70,23 @@ describe.sequential("importação de extrato CSV", () => {
     expect(dashboard.body.categoryExpenses).toEqual(expect.arrayContaining([{ name: "Mercado", amount: "450" }, { name: "Transporte", amount: "50" }]));
     expect(dashboard.body.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "3000", expense: "500" });
   });
+
+  it("salva em lote um extrato Nubank com vinte lançamentos sem estourar a transação", async () => {
+    const content = [
+      "date,title,amount",
+      ...Array.from({ length: 20 }, (_, index) => `2026-09-08,Compra Nubank ${index + 1},-1.00`),
+    ].join("\n");
+    const preview = await agent.post("/api/imports/csv/preview").send({ accountId, content });
+    expect(preview.status).toBe(200);
+    expect(preview.body.rows).toHaveLength(20);
+
+    const rows = preview.body.rows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate }));
+    const imported = await agent.post("/api/imports/csv/commit").send({ accountId, rows });
+    expect(imported.status).toBe(201);
+    expect(imported.body).toMatchObject({ imported: 20, skipped: 0 });
+
+    const storedAccount = await agent.get(`/api/accounts/${accountId}`);
+    expect(storedAccount.status).toBe(200);
+    expect(storedAccount.body.account.currentBalance).toBe("2580");
+  });
 });
