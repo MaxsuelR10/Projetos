@@ -168,7 +168,69 @@ export async function updateTransaction(userId, id, data) {
     if (next.accountId) await findActiveAccount(db, userId, next.accountId);
     await validateClassification(db, userId, next);
 
-    if (existing.cardPurchaseId && (data.paymentMethod !== undefined || data.creditCardId !== undefined || data.amount !== undefined || data.date !== undefined || data.categoryId !== undefined || data.subcategoryId !== undefined)) throw new AppError("Edite compras de cartao na tela de Cartoes", 409, "CARD_PURCHASE_EDIT_PROTECTED");
+    const rebuildsCardPurchase = existing.cardPurchaseId && (
+      data.paymentMethod !== undefined
+      || data.creditCardId !== undefined
+      || data.amount !== undefined
+      || data.date !== undefined
+      || data.categoryId !== undefined
+      || data.subcategoryId !== undefined
+    );
+
+    // A card transaction owns installments and invoice totals. When one of its
+    // financial fields changes, replace the pending purchase atomically so the
+    // invoice and the transaction always describe the same operation.
+    if (rebuildsCardPurchase) {
+      await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
+
+      const nextCardId = nextPaymentMethod === "CREDIT_CARD"
+        ? (data.creditCardId ?? existing.creditCardId)
+        : null;
+      if (nextPaymentMethod === "CREDIT_CARD" && !nextCardId) {
+        throw new AppError("Selecione o cartão de crédito utilizado", 400, "CREDIT_CARD_REQUIRED");
+      }
+      if (nextPaymentMethod === "CREDIT_CARD" && next.type !== "EXPENSE") {
+        throw new AppError("Somente despesas podem usar cartão de crédito", 400, "CARD_PURCHASE_EXPENSE_ONLY");
+      }
+
+      const purchase = nextPaymentMethod === "CREDIT_CARD"
+        ? await createPurchaseInTransaction(db, userId, nextCardId, {
+          categoryId: next.categoryId,
+          subcategoryId: next.subcategoryId,
+          description: data.description ?? existing.description,
+          totalAmount: next.amount,
+          purchaseDate: data.date ?? existing.date.toISOString().slice(0, 10),
+          installmentsCount: data.installmentsCount ?? 1,
+          notes: data.notes ?? existing.notes,
+        })
+        : null;
+
+      const nextStatus = nextPaymentMethod === "CREDIT_CARD" ? "COMPLETED" : next.status;
+      const affectsNextBalance = affectsBalance(nextStatus, nextPaymentMethod);
+      const updated = await db.transaction.update({
+        where: { id: existing.id },
+        data: {
+          accountId: next.accountId,
+          categoryId: next.categoryId,
+          subcategoryId: next.subcategoryId || null,
+          type: next.type,
+          description: data.description ?? existing.description,
+          amount: next.amount,
+          date: data.date ? asDate(data.date) : existing.date,
+          dueDate: data.dueDate !== undefined ? (data.dueDate ? asDate(data.dueDate) : null) : existing.dueDate,
+          status: nextStatus,
+          paymentMethod: nextPaymentMethod || null,
+          creditCardId: nextCardId,
+          cardPurchaseId: purchase?.id || null,
+          notes: data.notes !== undefined ? nullable(data.notes) : existing.notes,
+          settledAt: nextPaymentMethod === "CREDIT_CARD" ? null : (affectsNextBalance ? (existing.settledAt || new Date()) : null),
+        },
+        include: relationSelect,
+      });
+      if (affectsNextBalance) await applyBalance(db, next.accountId, next.type, next.amount);
+      return updated;
+    }
+
     const convertToCardPurchase = data.paymentMethod === "CREDIT_CARD" && existing.paymentMethod !== "CREDIT_CARD";
     if (convertToCardPurchase && next.type !== "EXPENSE") {
       throw new AppError("Somente despesas podem ser convertidas em compra no cartão", 400, "CARD_PURCHASE_EXPENSE_ONLY");

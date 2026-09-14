@@ -237,32 +237,34 @@ export function TransactionsPage() {
     setIsMovementFormOpen(true)
   }
 
-  function openMovementEditor(item) {
-    if (item.cardPurchaseId) {
-      setError('Para preservar as parcelas, compras no cartão devem ser alteradas pela tela de Cartões.')
-      return
+  async function openMovementEditor(item) {
+    try {
+      setError('')
+      const completeItem = item.cardPurchaseId ? await transactionService.get(item.id) : item
+      const installmentsCount = completeItem.cardPurchase?.installmentsCount || 1
+      setMode('movement')
+      setEditingMovement(completeItem)
+      setIsMovementFormOpen(true)
+      setMovement({
+        type: completeItem.type,
+        accountId: completeItem.accountId || '',
+        categoryId: completeItem.categoryId,
+        subcategoryId: completeItem.subcategoryId || '',
+        creditCardId: completeItem.creditCardId || null,
+        purchaseType: installmentsCount > 1 ? 'INSTALLMENT' : 'ONE_TIME',
+        installmentsCount: String(installmentsCount),
+        description: completeItem.description,
+        amount: completeItem.amount,
+        date: completeItem.date.slice(0, 10),
+        dueDate: completeItem.dueDate?.slice(0, 10) || '',
+        status: completeItem.status,
+        paymentMethod: completeItem.paymentMethod || 'PIX',
+        notes: completeItem.notes || '',
+      })
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (requestError) {
+      setError(getApiError(requestError))
     }
-    setMode('movement')
-    setEditingMovement(item)
-    setIsMovementFormOpen(true)
-    setMovement({
-      type: item.type,
-      accountId: item.accountId,
-      categoryId: item.categoryId,
-      subcategoryId: item.subcategoryId || '',
-      creditCardId: null,
-      purchaseType: 'ONE_TIME',
-      installmentsCount: '',
-      description: item.description,
-      amount: item.amount,
-      date: item.date.slice(0, 10),
-      dueDate: item.dueDate?.slice(0, 10) || '',
-      status: item.status,
-      paymentMethod: item.paymentMethod || 'PIX',
-      notes: item.notes || '',
-    })
-    setError('')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function openDetails(item) {
@@ -665,6 +667,10 @@ export function TransactionsPage() {
               </select>
             </label>
 
+            {editingMovement?.cardPurchaseId ? (
+              <p className="form-help form-field-wide">Você pode trocar o cartão ou a forma de pagamento enquanto nenhuma fatura dessa compra tiver sido paga. Ao salvar, as parcelas pendentes serão reorganizadas automaticamente.</p>
+            ) : null}
+
             {movement.paymentMethod === 'CREDIT_CARD' ? (
               <>
                 <label className="form-field">
@@ -1031,7 +1037,7 @@ export function TransactionsPage() {
               const actionIsPending = Boolean(pendingAction)
               const actions = [
                 { label: 'Ver detalhes', onSelect: () => openDetails(item), disabled: actionIsPending },
-                ...(isCardPurchase ? [{ label: 'Gerenciar no cartão', onSelect: () => navigate('/cartoes'), disabled: actionIsPending }] : item.status !== 'CANCELLED' ? [{ label: item.recurringTransactionId ? 'Editar esta ocorrência' : 'Editar', onSelect: () => openMovementEditor(item), disabled: actionIsPending }] : []),
+                ...(item.status !== 'CANCELLED' ? [{ label: item.recurringTransactionId ? 'Editar esta ocorrência' : 'Editar', onSelect: () => openMovementEditor(item), disabled: actionIsPending }] : []),
                 ...(isOpen && !isCardPurchase ? [{ label: item.type === 'EXPENSE' ? 'Pagar' : 'Receber', onSelect: () => startPayment(item), disabled: actionIsPending || isSubmitting }] : []),
                 ...(!item.creditCardInvoiceId && item.status !== 'CANCELLED' ? [{ label: pendingAction === `cancel:${item.id}` ? 'Cancelando...' : 'Cancelar', onSelect: () => cancel(item), destructive: true, disabled: actionIsPending }] : []),
                 ...(item.creditCardInvoiceId ? [{ label: 'Pagamento de fatura: gerencie em Cartões', onSelect: () => navigate('/cartoes'), disabled: actionIsPending }] : [{ label: pendingAction === `delete:${item.id}` ? 'Excluindo...' : item.recurringTransactionId ? 'Excluir esta ocorrência' : 'Excluir', onSelect: () => setDeleteTarget(item), destructive: true, disabled: actionIsPending }]),

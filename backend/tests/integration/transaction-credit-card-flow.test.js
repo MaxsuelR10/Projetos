@@ -165,4 +165,40 @@ describe.sequential("despesa com cartao pela tela de lancamentos", () => {
       pendingBills: "300",
     });
   });
+
+  it("permite trocar uma compra pendente no cartão para PIX e atualiza o saldo", async () => {
+    const created = await agent
+      .post("/api/transactions")
+      .send({
+        accountId,
+        categoryId,
+        type: "EXPENSE",
+        description: "Compra para converter",
+        amount: "100.00",
+        date: "2026-08-12",
+        paymentMethod: "CREDIT_CARD",
+        creditCardId: cardId,
+      });
+    expect(created.status).toBe(201);
+
+    const converted = await agent
+      .patch(`/api/transactions/${created.body.transaction.id}`)
+      .send({ paymentMethod: "PIX" });
+    expect(converted.status).toBe(200);
+    expect(converted.body.transaction).toMatchObject({
+      paymentMethod: "PIX",
+      creditCardId: null,
+      cardPurchaseId: null,
+      status: "COMPLETED",
+    });
+
+    const account = await agent.get(`/api/accounts/${accountId}`);
+    expect(account.body.account.currentBalance).toBe("900");
+
+    const cards = await agent.get("/api/cards");
+    expect(cards.body.cards.find((item) => item.id === cardId)).toMatchObject({
+      usedLimit: "1020",
+      availableLimit: "480",
+    });
+  });
 });
