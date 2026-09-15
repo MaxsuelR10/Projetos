@@ -47,6 +47,11 @@ describe.sequential("importação de extrato CSV", () => {
     expect(preview.body.rows[1]).toMatchObject({ type: "INCOME", amount: "3000.00", categoryName: "Salário", duplicate: false });
     expect(preview.body.rows[2]).toMatchObject({ type: "EXPENSE", amount: "50.00", categoryName: "Transporte", duplicate: false });
 
+    const incomeOnlyPreview = await agent.post("/api/imports/csv/preview").send({ accountId, content, type: "INCOME" });
+    expect(incomeOnlyPreview.status).toBe(200);
+    expect(incomeOnlyPreview.body.rows.every((row) => row.type === "INCOME")).toBe(true);
+    expect(incomeOnlyPreview.body.rows[0]).toMatchObject({ categoryName: "Outros" });
+
     const rows = preview.body.rows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate }));
     const imported = await agent.post("/api/imports/csv/commit").send({ accountId, rows });
     expect(imported.status).toBe(201);

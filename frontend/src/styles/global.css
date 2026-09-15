@@ -577,8 +577,11 @@ button:disabled {
 .balance-banner strong { font-size: clamp(1.85rem, 8vw, 2.7rem); letter-spacing: -0.04em; }
 
 .overview-grid { display: grid; gap: 0.8rem; }
-.month-picker { display: grid; gap: 0.25rem; color: var(--color-muted); font-size: 0.72rem; font-weight: 800; }
-.month-picker input { min-height: 2.6rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
+.period-picker { display: grid; gap: 0.35rem; color: var(--color-muted); font-size: 0.72rem; font-weight: 800; }
+.period-picker > strong { color: var(--color-ink); font-size: 0.88rem; }
+.period-picker-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; }
+.period-picker-fields label { display: grid; gap: 0.2rem; }
+.period-picker input { width: 100%; min-height: 2.6rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
 .metric-grid { display: grid; grid-template-columns: 1fr; gap: 0.7rem; }
 .metric-grid article, .dashboard-panel { padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); }
 .metric-grid .metric-alert { border-color: #e8c96a; background: #fffaf0; }
@@ -589,6 +592,25 @@ button:disabled {
 .chart-header { display: grid; gap: 0.8rem; }
 .chart-range-filter { display: grid; width: min(100%, 13rem); gap: 0.25rem; margin-top: 0.75rem; color: var(--color-muted); font-size: 0.72rem; font-weight: 800; }
 .chart-range-filter select { min-height: 2.5rem; padding: 0 0.65rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); color: var(--color-ink); background: var(--color-surface); font: inherit; }
+.chart-description { max-width: 34rem; margin: 0.45rem 0 0; color: var(--color-muted); font-size: 0.82rem; line-height: 1.5; }
+.chart-tabs { display: flex; width: fit-content; gap: 0.25rem; margin-top: -0.45rem; padding: 0.25rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
+.chart-tabs button { min-height: 2.25rem; padding: 0 0.9rem; border: 0; border-radius: calc(var(--radius-sm) - 0.15rem); color: var(--color-muted); background: transparent; font: inherit; font-size: 0.8rem; font-weight: 800; cursor: pointer; }
+.chart-tabs button.is-active { color: var(--color-brand); background: var(--color-brand-soft); }
+.expense-date-filter { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.expense-date-filter label { display: grid; gap: 0.25rem; color: var(--color-muted); font-size: 0.72rem; font-weight: 800; }
+.expense-date-filter input { width: 100%; min-height: 2.5rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); color: var(--color-ink); background: var(--color-surface); font: inherit; }
+.expense-anatomy-content { display: grid; gap: 1.5rem; margin-top: 1.25rem; }
+.pie-chart { width: min(100%, 15rem); aspect-ratio: 1; display: grid; place-items: center; margin: 0 auto; border-radius: 50%; }
+.pie-chart > div { width: 57%; aspect-ratio: 1; display: grid; place-content: center; gap: 0.25rem; padding: 0.75rem; border-radius: 50%; text-align: center; background: var(--color-surface); }
+.pie-chart span { color: var(--color-muted); font-size: 0.68rem; font-weight: 800; }
+.pie-chart strong { font-size: 0.95rem; letter-spacing: -0.03em; }
+.expense-breakdown-list { display: grid; gap: 0.4rem; }
+.expense-breakdown-list article { display: grid; grid-template-columns: 0.65rem minmax(0, 1fr) auto auto; align-items: center; gap: 0.55rem; padding: 0.65rem 0.7rem; border-bottom: 1px solid var(--color-line); }
+.expense-breakdown-list article:last-child { border-bottom: 0; }
+.expense-breakdown-list i { width: 0.65rem; height: 0.65rem; border-radius: 50%; }
+.expense-breakdown-list span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; font-weight: 750; }
+.expense-breakdown-list strong { font-size: 0.85rem; }
+.expense-breakdown-list small { min-width: 3.5rem; color: var(--color-muted); text-align: right; font-weight: 800; }
 .chart-active-summary { display: grid; gap: 0.45rem; color: var(--color-muted); font-size: 0.78rem; }
 .chart-values-row { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; }
 .chart-month-badge { width: fit-content; padding: 0.2rem 0.45rem; border-radius: 99rem; color: var(--color-brand); background: var(--color-brand-soft); font-weight: 800; }
@@ -990,6 +1012,8 @@ button:disabled {
   .subcategory-row { grid-template-columns: 1.2rem minmax(0, 1fr) auto auto; }
   .subcategory-row > div { grid-column: auto; }
   .goal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .expense-anatomy-content { grid-template-columns: minmax(13rem, 0.7fr) minmax(0, 1fr); align-items: center; }
+  .expense-date-filter { width: min(100%, 20rem); }
 }
 
 @media (min-width: 64rem) {

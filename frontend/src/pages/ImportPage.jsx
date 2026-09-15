@@ -36,6 +36,7 @@ export function ImportPage() {
   const [categories, setCategories] = useState([])
   const [cards, setCards] = useState([])
   const [accountId, setAccountId] = useState('')
+  const [importType, setImportType] = useState('EXPENSE')
   const [paymentMethod, setPaymentMethod] = useState('OTHER')
   const [creditCardId, setCreditCardId] = useState('')
   const [fileName, setFileName] = useState('')
@@ -91,7 +92,7 @@ export function ImportPage() {
     setError('')
     try {
       const content = await file.text()
-      const preview = await importService.previewCsv(accountId, content)
+      const preview = await importService.previewCsv(accountId, content, importType)
       setFileName(file.name)
       setInvalidRows(preview.invalidRows)
       setRows(preview.rows.map((row) => ({ ...row, selected: !row.duplicate })))
@@ -197,9 +198,26 @@ export function ImportPage() {
             </select>
           </label>
           <label className="form-field">
+            <span>Tipo dos lançamentos</span>
+            <small>Este tipo será aplicado a todos os lançamentos do arquivo.</small>
+            <select value={importType} onChange={(event) => {
+              const nextType = event.target.value
+              setImportType(nextType)
+              setRows([])
+              setFileName('')
+              if (nextType === 'INCOME') {
+                setPaymentMethod('OTHER')
+                setCreditCardId('')
+              }
+            }}>
+              <option value="EXPENSE">Despesas</option>
+              <option value="INCOME">Receitas</option>
+            </select>
+          </label>
+          <label className="form-field">
             <span>Forma de pagamento</span>
             <select value={paymentMethod} onChange={(event) => { setPaymentMethod(event.target.value); setCreditCardId('') }}>
-              {paymentMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {paymentMethods.filter(([value]) => importType === 'EXPENSE' || value !== 'CREDIT_CARD').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           {paymentMethod === 'CREDIT_CARD' ? (

@@ -72,11 +72,55 @@ async function getCashPeriodTotals(userId, range) {
   return { income, expense, categories };
 }
 
-export async function getDashboard(userId, month, months = 6) {
-  const range = monthBounds(month);
+function dateRange(from, to) {
+  const start = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
+async function getExpenseBreakdown(userId, range) {
+  const [cashExpenses, cardPurchases] = await Promise.all([
+    prisma.transaction.findMany({
+      where: {
+        ...cashPeriodTransactions(userId, range),
+        type: "EXPENSE",
+        creditCardInvoiceId: null,
+      },
+      include: { category: { select: { name: true } } },
+    }),
+    prisma.cardPurchase.findMany({
+      where: {
+        userId,
+        status: "ACTIVE",
+        purchaseDate: { gte: range.start, lt: range.end },
+      },
+      include: { category: { select: { name: true } } },
+    }),
+  ]);
+
+  const categories = new Map();
+  cashExpenses.forEach((transaction) => add(categories, transaction.category.name, transaction.amount));
+  cardPurchases.forEach((purchase) => add(categories, purchase.category.name, purchase.totalAmount));
+
+  return [...categories.entries()]
+    .map(([name, amount]) => ({ name, amount: money(amount) }))
+    .sort((first, second) => Number(second.amount) - Number(first.amount));
+}
+
+export async function getDashboard(userId, query = {}) {
+  const startMonth = query.startMonth ?? query.month ?? new Date().toISOString().slice(0, 7);
+  const endMonth = query.endMonth ?? startMonth;
+  const months = query.months ?? 6;
+  const startRange = monthBounds(startMonth);
+  const endRange = monthBounds(endMonth);
+  const range = { start: startRange.start, end: endRange.end };
+  const expenseRange = query.expenseFrom && query.expenseTo
+    ? dateRange(query.expenseFrom, query.expenseTo)
+    : range;
 
   const seriesRanges = Array.from({ length: months }, (_, index) => {
-    const date = new Date(Date.UTC(range.year, range.month - months + index, 1));
+    const date = new Date(Date.UTC(endRange.year, endRange.month - months + index, 1));
     return monthBounds(
       `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`,
     );
@@ -91,6 +135,7 @@ export async function getDashboard(userId, month, months = 6) {
     pendingCardInstallments,
     cards,
     upcomingInvoices,
+    expenseBreakdown,
   ] = await Promise.all([
     getCashPeriodTotals(userId, range),
     prisma.account.findMany({
@@ -114,8 +159,7 @@ export async function getDashboard(userId, month, months = 6) {
         userId,
         status: "PENDING",
         invoice: {
-          referenceYear: range.year,
-          referenceMonth: range.month,
+          dueDate: { gte: range.start, lt: range.end },
           status: { not: "PAID" },
         },
       },
@@ -135,6 +179,7 @@ export async function getDashboard(userId, month, months = 6) {
       take: 1,
       include: { creditCard: { select: { name: true } } },
     }),
+    getExpenseBreakdown(userId, expenseRange),
   ]);
 
   const [seriesTotals, cardUsage, commitments, overdueTransactions] =
@@ -218,7 +263,12 @@ export async function getDashboard(userId, month, months = 6) {
   const paidBills = periodTotals.expense;
 
   return {
-    period: `${range.year}-${String(range.month).padStart(2, "0")}`,
+    period: endMonth,
+    periodRange: { startMonth, endMonth },
+    expensePeriod: {
+      from: query.expenseFrom ?? startRange.start.toISOString().slice(0, 10),
+      to: query.expenseTo ?? new Date(endRange.end.getTime() - 86_400_000).toISOString().slice(0, 10),
+    },
     summary: {
       availableBalance: money(balance),
       currentBalance: money(balance),
@@ -257,7 +307,9 @@ export async function getDashboard(userId, month, months = 6) {
       .map(([name, amount]) => ({ name, amount: money(amount) }))
       .sort((a, b) => Number(b.amount) - Number(a.amount))
       .slice(0, 6),
+    expenseBreakdown,
     monthlySeries: seriesRanges.map((seriesRange, index) => ({
+      month: `${seriesRange.year}-${String(seriesRange.month).padStart(2, "0")}`,
       label: `${String(seriesRange.month).padStart(2, "0")}/${seriesRange.year}`,
       income: money(seriesTotals[index].income),
       expense: money(seriesTotals[index].expense),

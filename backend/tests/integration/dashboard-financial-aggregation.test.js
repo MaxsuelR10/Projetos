@@ -64,6 +64,22 @@ describe.sequential("agregação financeira em regime de caixa do dashboard", ()
     const beforePayment = await dashboard();
     expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "500", paidBills: "500", pendingBills: "350", availableBalance: "1500", monthlyResult: "1500" });
     expect(beforePayment.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "2000", expense: "500" });
+
+    const expenseAnatomy = await agent.get("/api/dashboard?startMonth=2026-09&endMonth=2026-10&expenseFrom=2026-09-06&expenseTo=2026-09-06");
+    expect(expenseAnatomy.status).toBe(200);
+    expect(expenseAnatomy.body).toMatchObject({
+      expensePeriod: { from: "2026-09-06", to: "2026-09-06" },
+      expenseBreakdown: [{ name: "Alimentação", amount: "500" }],
+    });
+
+    const septemberToOctober = await agent.get("/api/dashboard?startMonth=2026-09&endMonth=2026-10");
+    expect(septemberToOctober.status).toBe(200);
+    expect(septemberToOctober.body).toMatchObject({
+      periodRange: { startMonth: "2026-09", endMonth: "2026-10" },
+      summary: { monthlyIncome: "2000", monthlyExpense: "500", paidBills: "500", pendingBills: "420", monthlyResult: "1500" },
+    });
+    expect(septemberToOctober.body.monthlySeries.at(-1)).toMatchObject({ month: "2026-10", label: "10/2026" });
+
     const october = await agent.get("/api/dashboard?month=2026-10");
     expect(october.body.summary).toMatchObject({ monthlyExpense: "0", paidBills: "0", pendingBills: "70" });
     expect(october.body.monthlySeries.at(-1)).toMatchObject({ label: "10/2026", expense: "0" });

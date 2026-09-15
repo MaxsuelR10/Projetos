@@ -30,7 +30,7 @@ export function CardsPage() {
   const [purchases, setPurchases] = useState([])
   const [cardForm, setCardForm] = useState(emptyCard)
   const [purchaseForm, setPurchaseForm] = useState(emptyPurchase)
-  const [payment, setPayment] = useState({ accountId: '', categoryId: '', date: today, paymentMethod: 'PIX' })
+  const [payment, setPayment] = useState({ accountId: '' })
   const [formOpen, setFormOpen] = useState(false)
   const [purchaseFormOpen, setPurchaseFormOpen] = useState(false)
   const [editingCard, setEditingCard] = useState(null)
@@ -83,7 +83,7 @@ export function CardsPage() {
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
   }
   async function pay(invoice) {
-    if (!payment.accountId || !payment.categoryId) { toast.error('Selecione a conta e a categoria para registrar o pagamento.'); return }
+    if (!payment.accountId) { toast.error('Selecione a conta para registrar o pagamento.'); return }
     if (!(await requestConfirmation({ title: 'Pagar fatura?', message: `A fatura ${invoiceLabel(invoice)} no valor de ${formatCurrency(invoice.totalAmount, user.currency)} será debitada da conta selecionada.`, confirmLabel: 'Pagar fatura' }))) return
     setIsSubmitting(true); setError('')
     try { await cardService.payInvoice(invoice.id, payment); toast.success('Fatura paga com sucesso.'); await load() } catch (requestError) { toast.error(getApiError(requestError)) } finally { setIsSubmitting(false) }
@@ -130,10 +130,6 @@ export function CardsPage() {
                 <select value={payment.accountId} onChange={(event) => setPayment((current) => ({ ...current, accountId: event.target.value }))}>
                   <option value="">Conta de pagamento</option>
                   {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
-                </select>
-                <select value={payment.categoryId} onChange={(event) => setPayment((current) => ({ ...current, categoryId: event.target.value }))}>
-                  <option value="">Categoria do pagamento</option>
-                  {expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
                 </select>
                 <button type="button" className="primary-button inline-button" disabled={isSubmitting} onClick={() => pay(invoice)}>Pagar</button>
               </div> : <p className="muted-copy">{invoice.status === 'PAID' ? 'Pagamento registrado.' : 'Sem valores pendentes para pagar.'}</p>}

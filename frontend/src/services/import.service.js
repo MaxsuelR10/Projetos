@@ -1,8 +1,8 @@
 import { api } from './api.js'
 
 export const importService = {
-  async previewCsv(accountId, content) {
-    const response = await api.post('/imports/csv/preview', { accountId, content })
+  async previewCsv(accountId, content, type) {
+    const response = await api.post('/imports/csv/preview', { accountId, content, type })
     return response.data
   },
 

@@ -11,7 +11,7 @@ const importRowSchema = z.object({
 });
 
 export const previewCsvImportSchema = z.object({
-  body: z.object({ accountId: idSchema, content: z.string().min(1).max(1_000_000) }).strict(),
+  body: z.object({ accountId: idSchema, content: z.string().min(1).max(1_000_000), type: transactionTypeSchema.optional() }).strict(),
 });
 
 export const commitCsvImportSchema = z.object({

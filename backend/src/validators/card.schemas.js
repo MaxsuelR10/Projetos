@@ -63,5 +63,5 @@ export const listInvoicesSchema = z.object({ params: z.object({ id: idSchema }) 
 export const invoiceIdSchema = z.object({ params: z.object({ id: idSchema }) });
 export const payInvoiceSchema = z.object({
   params: z.object({ id: idSchema }),
-  body: z.object({ accountId: idSchema, categoryId: idSchema, date: dateSchema, paymentMethod: paymentMethodSchema.optional(), notes: optionalText(5000) }).strict(),
+  body: z.object({ accountId: idSchema, categoryId: idSchema.optional(), date: dateSchema.optional(), paymentMethod: paymentMethodSchema.optional(), notes: optionalText(5000) }).strict(),
 });

@@ -46,13 +46,17 @@ describe.sequential("cartões, parcelas e faturas", () => {
     const cards = await agent.get("/api/cards");
     expect(cards.body.cards[0]).toMatchObject({ usedLimit: "120", availableLimit: "880" });
     const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
-    expect(invoices.status).toBe(200); expect(invoices.body.invoices).toHaveLength(3);
-    expect(invoices.body.invoices.map((item) => `${item.referenceYear}-${item.referenceMonth}`)).toEqual(["2026-11", "2026-10", "2026-9"]);
+    expect(invoices.status).toBe(200);
+    expect(invoices.body.invoices.every((item) => item.effectiveStatus === "OPEN")).toBe(true);
+    const allInvoices = await prisma.creditCardInvoice.findMany({
+      where: { userId, creditCardId: cardId },
+      orderBy: [{ referenceYear: "desc" }, { referenceMonth: "desc" }],
+    });
+    expect(allInvoices.map((item) => `${item.referenceYear}-${item.referenceMonth}`)).toEqual(["2026-11", "2026-10", "2026-9"]);
   });
 
   it("paga uma fatura uma única vez, gera lançamento e baixa o saldo da conta", async () => {
-    const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
-    const september = invoices.body.invoices.find((invoice) => invoice.referenceMonth === 9);
+    const september = await prisma.creditCardInvoice.findFirst({ where: { userId, creditCardId: cardId, referenceYear: 2026, referenceMonth: 9 } });
     const paid = await agent.post(`/api/invoices/${september.id}/pay`).send({ accountId, categoryId, date: "2026-09-05", paymentMethod: "PIX" });
     expect(paid.status).toBe(200); expect(paid.body.invoice.status).toBe("PAID");
 
@@ -66,6 +70,7 @@ describe.sequential("cartões, parcelas e faturas", () => {
 
     const transactions = await agent.get("/api/transactions?limit=100");
     const paymentTransaction = transactions.body.transactions.find((transaction) => transaction.creditCardInvoiceId === september.id);
+    expect(paymentTransaction.category.name).toBe("Outros");
     const cancelledPayment = await agent.patch(`/api/transactions/${paymentTransaction.id}/cancel`);
     expect(cancelledPayment.status).toBe(409);
     expect(cancelledPayment.body.error.code).toBe("INVOICE_PAYMENT_PROTECTED");
@@ -103,9 +108,12 @@ describe.sequential("cartões, parcelas e faturas", () => {
     expect(beforeClosing.status).toBe(201);
     expect(afterClosing.status).toBe(201);
 
-    const invoices = await agent.get(`/api/cards/${longTermCard.body.card.id}/invoices`);
-    expect(invoices.body.invoices).toHaveLength(12);
-    const referenceFor = (description) => invoices.body.invoices.find((invoice) => invoice.installments.some((item) => item.purchase.description === description));
+    const invoices = await prisma.creditCardInvoice.findMany({
+      where: { userId, creditCardId: longTermCard.body.card.id },
+      include: { installments: { include: { purchase: { select: { description: true } } } } },
+    });
+    expect(invoices).toHaveLength(12);
+    const referenceFor = (description) => invoices.find((invoice) => invoice.installments.some((item) => item.purchase.description === description));
     expect(referenceFor("Antes do fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 9 });
     expect(referenceFor("Depois do fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 10 });
   });
@@ -137,9 +145,10 @@ describe.sequential("cartões, parcelas e faturas", () => {
 
     const changed = await agent.patch(`/api/cards/${editableCard.body.card.id}`).send({ dueDay: 27 });
     expect(changed.status).toBe(200);
-    const realignedInvoices = await agent.get(`/api/cards/${editableCard.body.card.id}/invoices`);
-    expect(realignedInvoices.body.invoices).toHaveLength(1);
-    expect(realignedInvoices.body.invoices[0]).toMatchObject({ referenceYear: 2026, referenceMonth: 8, totalAmount: "100" });
-    expect(realignedInvoices.body.invoices[0].dueDate).toContain("2026-08-27");
+    const realignedInvoices = await prisma.creditCardInvoice.findMany({ where: { userId, creditCardId: editableCard.body.card.id } });
+    expect(realignedInvoices).toHaveLength(1);
+    expect(realignedInvoices[0]).toMatchObject({ referenceYear: 2026, referenceMonth: 8 });
+    expect(realignedInvoices[0].totalAmount.toString()).toBe("100");
+    expect(realignedInvoices[0].dueDate.toISOString()).toContain("2026-08-27");
   });
 });

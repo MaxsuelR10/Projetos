@@ -111,7 +111,7 @@ function moneyKey(value) {
   return trimmedDecimal ? `${integer}.${trimmedDecimal}` : integer;
 }
 
-function rowsFromCsv(content, categories) {
+function rowsFromCsv(content, categories, selectedType) {
   const data = parseCsv(content);
   if (data.length < 2) throw new AppError("O arquivo precisa ter cabeçalho e ao menos um lançamento", 400, "IMPORT_FILE_EMPTY");
   const headers = data[0].map(cleanHeader);
@@ -132,9 +132,10 @@ function rowsFromCsv(content, categories) {
       invalidRows.push(index + 2);
       return null;
     }
-    const type = debitIndex >= 0 && creditIndex >= 0
+    const parsedType = debitIndex >= 0 && creditIndex >= 0
       ? (String(cells[debitIndex] || "").trim() ? "EXPENSE" : "INCOME")
       : amount.type;
+    const type = selectedType || parsedType;
     const category = findCategory(categories, type, description);
     return { rowNumber: index + 2, date, description, amount: amount.amount, type, categoryId: category?.id || null, categoryName: category?.name || "Sem categoria" };
   }).filter(Boolean);
@@ -164,7 +165,7 @@ async function activeCreditCard(db, userId, creditCardId) {
 
 export async function previewCsvImport(userId, data) {
   const { account, categories } = await importContext(userId, data.accountId);
-  const parsed = rowsFromCsv(data.content, categories);
+  const parsed = rowsFromCsv(data.content, categories, data.type);
   const dates = parsed.rows.map((row) => row.date).sort();
   const existing = await prisma.transaction.findMany({
     where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
