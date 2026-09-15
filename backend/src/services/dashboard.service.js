@@ -80,7 +80,7 @@ function dateRange(from, to) {
 }
 
 async function getExpenseBreakdown(userId, range) {
-  const [cashExpenses, cardPurchases] = await Promise.all([
+  const [cashExpenses, cardInstallments] = await Promise.all([
     prisma.transaction.findMany({
       where: {
         ...cashPeriodTransactions(userId, range),
@@ -89,19 +89,22 @@ async function getExpenseBreakdown(userId, range) {
       },
       include: { category: { select: { name: true } } },
     }),
-    prisma.cardPurchase.findMany({
+    prisma.cardInstallment.findMany({
       where: {
         userId,
-        status: "ACTIVE",
-        purchaseDate: { gte: range.start, lt: range.end },
+        status: "PENDING",
+        invoice: {
+          status: { not: "PAID" },
+          dueDate: { gte: range.start, lt: range.end },
+        },
       },
-      include: { category: { select: { name: true } } },
+      include: { purchase: { include: { category: { select: { name: true } } } } },
     }),
   ]);
 
   const categories = new Map();
   cashExpenses.forEach((transaction) => add(categories, transaction.category.name, transaction.amount));
-  cardPurchases.forEach((purchase) => add(categories, purchase.category.name, purchase.totalAmount));
+  cardInstallments.forEach((installment) => add(categories, installment.purchase.category.name, installment.amount));
 
   return [...categories.entries()]
     .map(([name, amount]) => ({ name, amount: money(amount) }))

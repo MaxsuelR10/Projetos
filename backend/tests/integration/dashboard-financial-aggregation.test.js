@@ -65,11 +65,11 @@ describe.sequential("agregação financeira em regime de caixa do dashboard", ()
     expect(beforePayment.summary).toMatchObject({ monthlyIncome: "2000", monthlyExpense: "500", paidBills: "500", pendingBills: "350", availableBalance: "1500", monthlyResult: "1500" });
     expect(beforePayment.monthlySeries.at(-1)).toMatchObject({ label: "09/2026", income: "2000", expense: "500" });
 
-    const expenseAnatomy = await agent.get("/api/dashboard?startMonth=2026-09&endMonth=2026-10&expenseFrom=2026-09-06&expenseTo=2026-09-06");
+    const expenseAnatomy = await agent.get("/api/dashboard?startMonth=2026-09&endMonth=2026-10&expenseFrom=2026-09-01&expenseTo=2026-09-30");
     expect(expenseAnatomy.status).toBe(200);
     expect(expenseAnatomy.body).toMatchObject({
-      expensePeriod: { from: "2026-09-06", to: "2026-09-06" },
-      expenseBreakdown: [{ name: "Alimentação", amount: "500" }],
+      expensePeriod: { from: "2026-09-01", to: "2026-09-30" },
+      expenseBreakdown: [{ name: "Alimentação", amount: "800" }],
     });
 
     const septemberToOctober = await agent.get("/api/dashboard?startMonth=2026-09&endMonth=2026-10");
