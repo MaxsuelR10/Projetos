@@ -47,7 +47,10 @@ describe.sequential("cartões, parcelas e faturas", () => {
     expect(cards.body.cards[0]).toMatchObject({ usedLimit: "120", availableLimit: "880" });
     const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
     expect(invoices.status).toBe(200);
-    expect(invoices.body.invoices.every((item) => item.effectiveStatus === "OPEN")).toBe(true);
+    // Faturas não pagas continuam visíveis mesmo depois do fechamento, para que
+    // possam ser quitadas na tela de Cartões.
+    expect(invoices.body.invoices.map((item) => `${item.referenceYear}-${item.referenceMonth}`))
+      .toEqual(["2026-11", "2026-10", "2026-9"]);
     const allInvoices = await prisma.creditCardInvoice.findMany({
       where: { userId, creditCardId: cardId },
       orderBy: [{ referenceYear: "desc" }, { referenceMonth: "desc" }],

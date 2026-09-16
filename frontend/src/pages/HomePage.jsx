@@ -35,6 +35,36 @@ function formatReferencePeriod(startMonth, endMonth) {
   return `${formatMonth(startMonth)} até ${formatMonth(endMonth)}`;
 }
 
+function pointOnCircle(percentage, radius) {
+  const angle = ((percentage / 100) * 360 - 90) * (Math.PI / 180);
+  return {
+    x: 100 + radius * Math.cos(angle),
+    y: 100 + radius * Math.sin(angle),
+  };
+}
+
+function donutSegmentPath(start, end, outerRadius = 96, innerRadius = 56) {
+  const size = end - start;
+
+  if (size >= 99.999) {
+    return "M 100 4 A 96 96 0 1 1 100 196 A 96 96 0 1 1 100 4 M 100 44 A 56 56 0 1 0 100 156 A 56 56 0 1 0 100 44 Z";
+  }
+
+  const outerStart = pointOnCircle(start, outerRadius);
+  const outerEnd = pointOnCircle(end, outerRadius);
+  const innerEnd = pointOnCircle(end, innerRadius);
+  const innerStart = pointOnCircle(start, innerRadius);
+  const largeArc = size > 50 ? 1 : 0;
+
+  return [
+    `M ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+    "Z",
+  ].join(" ");
+}
+
 export function HomePage() {
   const { user } = useAuth();
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -43,9 +73,10 @@ export function HomePage() {
   const [expenseFrom, setExpenseFrom] = useState(() => firstDayOfMonth(currentMonth));
   const [expenseTo, setExpenseTo] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
   const [chartMonths, setChartMonths] = useState(6);
-  const [activeChart, setActiveChart] = useState("comparison");
+  const [activeChart, setActiveChart] = useState("anatomy");
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [hoveredSeries, setHoveredSeries] = useState(null);
+  const [hoveredPieItem, setHoveredPieItem] = useState(null);
 
   const loadDashboard = useCallback(() => {
     let active = true;
@@ -107,9 +138,7 @@ export function HomePage() {
       end: start + percentage,
     };
   });
-  const pieBackground = pieItems.length
-    ? `conic-gradient(${pieItems.map((item) => `${item.color} ${item.start}% ${item.end}%`).join(", ")})`
-    : "var(--color-brand-soft)";
+  const activePieItem = pieItems.find((item) => item.name === hoveredPieItem?.name) ?? null;
 
   return (
     <section className="page-stack">
@@ -386,8 +415,40 @@ export function HomePage() {
             </div>
             {pieItems.length ? (
               <div className="expense-anatomy-content">
-                <div className="pie-chart" role="img" aria-label="Gráfico de pizza das despesas por categoria" style={{ background: pieBackground }}>
-                  <div><span>Total gasto</span><strong>{formatCurrency(expenseTotal, user.currency)}</strong></div>
+                <div className="pie-chart-wrapper">
+                  {activePieItem ? (
+                    <div className="pie-tooltip" role="status" aria-live="polite">
+                      <span className="pie-tooltip-category">
+                        <i style={{ background: activePieItem.color }} />
+                        {activePieItem.name}
+                      </span>
+                      <strong>{formatCurrency(activePieItem.amount, user.currency)}</strong>
+                      <small>{activePieItem.percentage.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do total gasto</small>
+                    </div>
+                  ) : null}
+                  <div className="pie-chart">
+                    <svg
+                      viewBox="0 0 200 200"
+                      role="img"
+                      aria-label="Gráfico de pizza das despesas por categoria. Passe o mouse sobre uma categoria para ver os detalhes."
+                    >
+                      {pieItems.map((item) => (
+                        <path
+                          className={`pie-slice ${activePieItem?.name === item.name ? "is-active" : ""}`}
+                          d={donutSegmentPath(item.start, item.end)}
+                          fill={item.color}
+                          key={item.name}
+                          tabIndex="0"
+                          aria-label={`${item.name}: ${formatCurrency(item.amount, user.currency)}, ${item.percentage.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do total`}
+                          onFocus={() => setHoveredPieItem(item)}
+                          onBlur={() => setHoveredPieItem(null)}
+                          onMouseEnter={() => setHoveredPieItem(item)}
+                          onMouseLeave={() => setHoveredPieItem(null)}
+                        />
+                      ))}
+                    </svg>
+                    <div className="pie-chart-center"><span>Total gasto</span><strong>{formatCurrency(expenseTotal, user.currency)}</strong></div>
+                  </div>
                 </div>
                 <div className="expense-breakdown-list">
                   {pieItems.map((item) => (

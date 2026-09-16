@@ -213,7 +213,10 @@ export async function cancelPurchase(userId, id) {
 export async function listInvoices(userId, cardId) {
   await findCard(prisma, userId, cardId);
   const invoices = await prisma.creditCardInvoice.findMany({
-    where: { userId, creditCardId: cardId, status: "OPEN", closingDate: { gte: new Date() } },
+    // An open invoice stays payable after its closing date. Filtering it out here
+    // hid overdue/current invoices from the Cards screen and made their purchases
+    // appear to vanish even though the installments were still pending.
+    where: { userId, creditCardId: cardId, status: "OPEN" },
     include: invoiceInclude,
     orderBy: [{ referenceYear: "desc" }, { referenceMonth: "desc" }],
   });
