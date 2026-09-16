@@ -21,6 +21,10 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().min(1).default("7d"),
   JWT_COOKIE_DAYS: z.coerce.number().int().positive().default(7),
   CORS_ORIGIN: z.url().default("http://localhost:5173"),
+  // The rest of the application stays available while the assistant is not
+  // configured in the deploy environment.
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_MODEL: z.string().min(1).default("gpt-5"),
 });
 
 const result = envSchema.safeParse(process.env);

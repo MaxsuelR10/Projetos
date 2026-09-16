@@ -482,6 +482,9 @@ export function HomePage() {
               <Link className="secondary-button inline-button" to="/cartoes">
                 Ver Cartões & Faturas
               </Link>
+              <Link className="secondary-button inline-button" to="/assistente">
+                Falar com assistente
+              </Link>
             </div>
           </section>
         </>

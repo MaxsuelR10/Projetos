@@ -1,7 +1,8 @@
 # Controle de Finanças
 
-Sistema web pessoal de controle financeiro, desenvolvido para uso local e sem
-dependência de APIs, bancos ou serviços pagos.
+Sistema web pessoal de controle financeiro, desenvolvido para uso local. O
+assistente financeiro é opcional e usa a API da OpenAI somente quando uma chave
+é configurada no backend.
 
 ## Estado atual
 
@@ -41,6 +42,18 @@ A Fase 5 adiciona recorrências semanais, quinzenais, mensais, anuais ou por
 intervalo customizado. As ocorrências são geradas localmente como lançamentos
 pendentes, sem duplicidade. Também inclui assinaturas com custo mensal
 equivalente calculado localmente, sem consultar APIs externas.
+
+## Assistente financeiro
+
+O chat em `/assistente` analisa os dados do usuário autenticado e pode consultar
+resumo financeiro, orçamento por categoria, faturas futuras e simular uma compra
+parcelada. As ferramentas são estritamente de leitura: ele não cria lançamentos,
+não paga faturas e não movimenta dinheiro.
+
+Cada consulta obtém o `userId` exclusivamente do cookie JWT no servidor; a IA
+nunca recebe esse identificador nem pode fornecê-lo como argumento. O backend
+limita o chat a 20 mensagens por 15 minutos e valida todos os argumentos de
+ferramenta antes de consultar o PostgreSQL.
 
 ## Arquitetura e manutenção
 
@@ -85,6 +98,7 @@ equivalente calculado localmente, sem consultar APIs externas.
 - Node.js e Express;
 - Prisma ORM e PostgreSQL local;
 - JWT, bcrypt e Zod;
+- SDK da OpenAI com Responses API e Function Calling (opcional);
 - Vitest e Supertest.
 
 Todas as dependências são gratuitas e executadas localmente.
@@ -113,9 +127,13 @@ JWT_SECRET=um-segredo-local-forte-com-pelo-menos-32-caracteres
 JWT_EXPIRES_IN=7d
 JWT_COOKIE_DAYS=7
 CORS_ORIGIN=http://localhost:5173
+OPENAI_API_KEY=sua_chave_da_openai_apenas_no_backend
+OPENAI_MODEL=gpt-5
 ```
 
 O `.env` é ignorado pelo Git. Nunca use dados reais no `.env.example`.
+Sem `OPENAI_API_KEY`, as demais funcionalidades continuam disponíveis e o chat
+informa que precisa ser configurado, sem tentar inventar uma análise.
 
 Valide e aplique o banco:
 
@@ -170,6 +188,7 @@ O frontend usa `http://localhost:3000/api` por padrão. Para alterar, copie
 | `GET` | `/api/cards/:id/invoices` | Sim | Lista faturas e parcelas do cartão |
 | `POST` | `/api/invoices/:id/pay` | Sim | Paga fatura usando uma conta ativa |
 | `PATCH`, `DELETE` | `/api/card-purchases/:id` | Sim | Edita metadados ou cancela compra futura |
+| `POST` | `/api/assistant/chat` | Sim | Responde a uma pergunta usando ferramentas financeiras de leitura |
 
 O backend nunca aceita `userId` do frontend como autoridade. Rotas financeiras
 futuras deverão usar exclusivamente o identificador obtido pelo middleware JWT.

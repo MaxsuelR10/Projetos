@@ -11,6 +11,7 @@ const desktopNavigation = [
   { to: '/recorrencias', label: 'Recorrências', symbol: '↻' },
   { to: '/planejamento', label: 'Metas', symbol: '◎' },
   { to: '/investimentos', label: 'Investimentos', symbol: '↗' },
+  { to: '/assistente', label: 'Assistente', symbol: '✦' },
   { to: '/categorias', label: 'Categorias', symbol: '◇' },
 ]
 
@@ -22,6 +23,7 @@ const mobilePrimaryNav = [
 ]
 
 const moreNavItems = [
+  { to: '/assistente', label: 'Assistente financeiro', symbol: '✦', desc: 'Análises e simulações com seus dados' },
   { to: '/importar', label: 'Importar extrato', symbol: '⇪', desc: 'Anexar CSV do seu banco' },
   { to: '/recorrencias', label: 'Recorrências & Fixas', symbol: '↻', desc: 'Gastos e receitas programadas' },
   { to: '/planejamento', label: 'Metas Financeiras', symbol: '◎', desc: 'Objetivos e reservas' },
