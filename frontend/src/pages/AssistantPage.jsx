@@ -7,12 +7,13 @@ const suggestions = [
   'Quais são as minhas próximas faturas?',
   'Como está meu orçamento por categoria?',
   'Posso comprar uma TV de R$ 2.000 em 12 vezes?',
+  'Consigo comprar algum item da minha lista de desejos?',
 ]
 
 const welcomeMessage = {
   id: 'welcome',
   role: 'assistant',
-  content: 'Olá! Posso analisar seus saldos, orçamento, faturas e simular compras usando os dados cadastrados. O que você quer entender?',
+  content: 'Olá! Posso analisar seus saldos, orçamento, faturas, lista de desejos e simular compras usando os dados cadastrados. O que você quer entender?',
 }
 
 export function AssistantPage() {
@@ -56,7 +57,7 @@ export function AssistantPage() {
       <div className="page-heading">
         <p className="eyebrow">Análise inteligente · somente leitura</p>
         <h1>Assistente financeiro</h1>
-        <p>Converse sobre seu orçamento, faturas e impacto de compras. As respostas usam os dados cadastrados no sistema.</p>
+        <p>Converse sobre seu orçamento, faturas, desejos e impacto de compras. As respostas usam os dados cadastrados no sistema.</p>
       </div>
 
       <section className="assistant-shell" aria-label="Conversa com o assistente financeiro">

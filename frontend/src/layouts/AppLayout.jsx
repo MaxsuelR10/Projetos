@@ -10,6 +10,7 @@ const desktopNavigation = [
   { to: '/cartoes', label: 'Cartões', symbol: '▣' },
   { to: '/recorrencias', label: 'Recorrências', symbol: '↻' },
   { to: '/planejamento', label: 'Metas', symbol: '◎' },
+  { to: '/desejos', label: 'Desejos', symbol: '♡' },
   { to: '/investimentos', label: 'Investimentos', symbol: '↗' },
   { to: '/assistente', label: 'Assistente', symbol: '✦' },
   { to: '/categorias', label: 'Categorias', symbol: '◇' },
@@ -27,6 +28,7 @@ const moreNavItems = [
   { to: '/importar', label: 'Importar extrato', symbol: '⇪', desc: 'Anexar CSV do seu banco' },
   { to: '/recorrencias', label: 'Recorrências & Fixas', symbol: '↻', desc: 'Gastos e receitas programadas' },
   { to: '/planejamento', label: 'Metas Financeiras', symbol: '◎', desc: 'Objetivos e reservas' },
+  { to: '/desejos', label: 'Desejos & Lembretes', symbol: '♡', desc: 'Itens para comprar e pagamentos a lembrar' },
   { to: '/investimentos', label: 'Investimentos', symbol: '↗', desc: 'Patrimônio aplicado' },
   { to: '/categorias', label: 'Categorias', symbol: '◇', desc: 'Classificação de lançamentos' },
 ]

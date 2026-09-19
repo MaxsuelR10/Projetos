@@ -10,6 +10,7 @@ import { planningRouter } from "./planning.routes.js";
 import { investmentRouter } from "./investment.routes.js";
 import { importRouter } from "./import.routes.js";
 import { assistantRouter } from "./assistant.routes.js";
+import { wishRouter } from "./wish.routes.js";
 
 export const apiRouter = Router();
 
@@ -32,3 +33,4 @@ apiRouter.use("/planning", planningRouter);
 apiRouter.use("/investments", investmentRouter);
 apiRouter.use("/imports", importRouter);
 apiRouter.use("/assistant", assistantRouter);
+apiRouter.use("/wishes", wishRouter);

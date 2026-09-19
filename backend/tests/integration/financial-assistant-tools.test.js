@@ -23,6 +23,8 @@ async function removeUser(userId) {
     prisma.creditCard.deleteMany({ where: { userId } }),
     prisma.budget.deleteMany({ where: { userId } }),
     prisma.financialGoal.deleteMany({ where: { userId } }),
+    prisma.wishItem.deleteMany({ where: { userId } }),
+    prisma.paymentReminder.deleteMany({ where: { userId } }),
     prisma.investment.deleteMany({ where: { userId } }),
     prisma.category.deleteMany({ where: { userId } }),
     prisma.account.deleteMany({ where: { userId } }),
@@ -38,7 +40,7 @@ describe.sequential("ferramentas do assistente financeiro", () => {
   });
 
   it("não aceita identificador de usuário nos schemas de ferramenta", () => {
-    expect(FINANCIAL_ASSISTANT_TOOLS).toHaveLength(4);
+    expect(FINANCIAL_ASSISTANT_TOOLS).toHaveLength(5);
     for (const tool of FINANCIAL_ASSISTANT_TOOLS) {
       expect(Object.keys(tool.parameters.properties)).not.toContain("user_id");
       expect(Object.keys(tool.parameters.properties)).not.toContain("userId");
@@ -96,5 +98,18 @@ describe.sequential("ferramentas do assistente financeiro", () => {
     const invalidMessage = await owner.post("/api/assistant/chat").send({ message: " " });
     expect(invalidMessage.status).toBe(400);
     expect(invalidMessage.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("consulta desejos e lembretes somente do usuário autenticado", async () => {
+    await owner.post("/api/wishes/items").send({ name: "TV para sala", amount: "2499.90", url: "https://example.com/tv" });
+    await owner.post("/api/wishes/reminders").send({ title: "Pagar internet", dueDate: "2026-10-10", amount: "99.90" });
+    await anotherUser.post("/api/wishes/items").send({ name: "Desejo de outro usuário", amount: "999" });
+
+    const context = await executeFinancialTool(ownerId, "get_wishlist_items", { query: "TV" });
+    expect(context).toMatchObject({
+      wish_items: [{ name: "TV para sala", amount: "2499.9", url: "https://example.com/tv" }],
+      pending_payment_reminders: [{ title: "Pagar internet", amount: "99.9", due_date: "2026-10-10" }],
+    });
+    expect(JSON.stringify(context)).not.toContain("Desejo de outro usuário");
   });
 });

@@ -13,6 +13,7 @@ import { normalizeName } from "../utils/normalize-name.js";
 import { splitMoney } from "./card.service.js";
 import { getDashboard } from "./dashboard.service.js";
 import { listBudgets } from "./planning.service.js";
+import { getWishlistContext } from "./wish.service.js";
 
 const monthPattern = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 const monthValue = z.string().regex(monthPattern, "Informe o mês no formato AAAA-MM");
@@ -34,14 +35,18 @@ const purchaseSimulationArgsSchema = z.object({
   purchase_date: z.iso.date().nullable(),
   card_name: nullableCardName,
 }).strict();
+const wishlistArgsSchema = z.object({
+  query: z.string().trim().min(1).max(160).nullable(),
+}).strict();
 
 export const FINANCIAL_ASSISTANT_SYSTEM_PROMPT = `Você é o Assistente Financeiro do Controle de Finanças, um consultor pessoal cordial, claro e prudente.
 
 Seu papel é explicar o orçamento, as faturas e os impactos de compras usando apenas dados retornados pelas ferramentas. Responda em português do Brasil, com valores em R$ e datas claras. Seja direto, acolhedor e explique os cálculos em linguagem simples.
 
 REGRAS OBRIGATÓRIAS:
-- Para qualquer pergunta sobre dados, histórico, orçamento, cartões, faturas, saldo, metas ou viabilidade de compra deste usuário, chame pelo menos uma ferramenta antes de responder. Nunca invente valores, cartões, datas ou percentuais.
+- Para qualquer pergunta sobre dados, histórico, orçamento, cartões, faturas, saldo, metas, lista de desejos, lembretes ou viabilidade de compra deste usuário, chame pelo menos uma ferramenta antes de responder. Nunca invente valores, cartões, datas ou percentuais.
 - Use a ferramenta de simulação para perguntas do tipo "posso comprar". Se não houver cartão definido, explique a limitação e peça qual cartão usar.
+- Para perguntas sobre um item da lista de desejos, chame get_wishlist_items. Para decidir se a compra cabe nas finanças, também consulte get_financial_snapshot; se houver cartão e parcelamento envolvidos, chame simulate_purchase_impact. Use o valor salvo no item, caso ele seja encontrado. Diga claramente se é viável, não viável ou se depende de um dado que não está cadastrado.
 - Trate valores, cálculos e projeções como estimativas baseadas nos registros atuais; não prometa rentabilidade nem resultado futuro.
 - Não faça transações, não altere dados, não solicite senhas, códigos, número de cartão ou documentos. As ferramentas disponíveis são apenas de leitura.
 - Não ofereça aconselhamento jurídico, tributário, de investimento personalizado ou garantia de crédito. Quando necessário, recomende procurar um profissional habilitado.
@@ -109,6 +114,20 @@ export const FINANCIAL_ASSISTANT_TOOLS = [
         card_name: { type: ["string", "null"], description: "Nome do cartão. Use null se o usuário não informar." },
       },
       required: ["amount", "installments", "purchase_date", "card_name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "get_wishlist_items",
+    description: "Consulta itens ativos da lista de desejos e lembretes de pagamento ainda pendentes. Use query para localizar um desejo específico pelo nome; use null para consultar todos.",
+    strict: true,
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: ["string", "null"], description: "Parte do nome do desejo a localizar, ou null para todos os itens." },
+      },
+      required: ["query"],
       additionalProperties: false,
     },
   },
@@ -294,11 +313,17 @@ async function simulatePurchaseImpact(userId, rawArguments) {
   };
 }
 
+async function getWishlistItems(userId, rawArguments) {
+  const input = wishlistArgsSchema.parse(rawArguments);
+  return getWishlistContext(userId, input.query);
+}
+
 const toolHandlers = {
   get_financial_snapshot: getFinancialSnapshot,
   get_card_invoices: getCardInvoices,
   get_budget_status: getBudgetStatus,
   simulate_purchase_impact: simulatePurchaseImpact,
+  get_wishlist_items: getWishlistItems,
 };
 
 export async function executeFinancialTool(userId, name, rawArguments) {

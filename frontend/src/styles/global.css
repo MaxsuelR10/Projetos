@@ -1002,6 +1002,30 @@ button:disabled {
 .goal-details p { font-weight: 750; font-size: 0.88rem; }
 .goal-details small { color: var(--color-muted); font-size: 0.8rem; }
 
+.wishes-page { gap: 2rem; }
+.wish-heading-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center; }
+.wish-heading-actions .inline-button { margin-top: 0; }
+.wish-section { display: grid; gap: 1rem; }
+.section-count { color: var(--color-muted); font-size: 0.85rem; font-weight: 750; }
+.wish-list, .reminder-list { display: grid; gap: 0.8rem; }
+.wish-card, .reminder-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: start; padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); box-shadow: 0 10px 26px rgba(25, 58, 45, 0.06); }
+.wish-card-main { min-width: 0; display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); gap: 0.8rem; }
+.wish-icon, .reminder-marker { width: 2.6rem; height: 2.6rem; display: grid; place-items: center; border-radius: 0.8rem; color: var(--color-brand); background: var(--color-brand-soft); font-weight: 900; font-size: 1.25rem; }
+.wish-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; }
+.wish-title-row h3 { margin: 0; overflow-wrap: anywhere; font-size: 1rem; }
+.wish-card-main strong { display: block; margin-top: 0.25rem; font-size: 1.05rem; }
+.wish-card-main p, .reminder-details p { margin: 0.4rem 0 0; color: var(--color-muted); font-size: 0.88rem; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.wish-card-main a { display: inline-flex; gap: 0.35rem; margin-top: 0.6rem; color: var(--color-brand); font-size: 0.86rem; font-weight: 800; text-underline-offset: 0.18rem; overflow-wrap: anywhere; }
+.wish-card.is-complete, .reminder-card.is-complete { opacity: 0.72; }
+.wish-card.is-complete .wish-card-main > div:last-child > h3, .reminder-card.is-complete h3 { text-decoration: line-through; }
+.reminder-card { grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; }
+.reminder-details { min-width: 0; }
+.reminder-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.3rem; color: var(--color-muted); font-size: 0.86rem; }
+.reminder-meta strong { color: var(--color-ink); }
+.overdue-tag { padding: 0.18rem 0.45rem; border-radius: 999px; color: #9d281d; background: var(--color-danger-soft); font-size: 0.72rem; font-weight: 850; }
+.completed-records { display: grid; gap: 0.8rem; margin-top: 0.15rem; padding: 0.85rem 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface-soft); }
+.completed-records summary { cursor: pointer; color: var(--color-muted); font-size: 0.88rem; font-weight: 800; }
+
 @media (min-width: 42rem) {
   .modal-backdrop { align-items: center; }
   .form-drawer-backdrop { align-items: stretch; justify-content: end; }
@@ -1022,6 +1046,7 @@ button:disabled {
   .subcategory-row { grid-template-columns: 1.2rem minmax(0, 1fr) auto auto; }
   .subcategory-row > div { grid-column: auto; }
   .goal-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wish-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .expense-anatomy-content { grid-template-columns: minmax(13rem, 0.7fr) minmax(0, 1fr); align-items: center; }
   .expense-date-filter { width: min(100%, 20rem); }
 }
@@ -1074,6 +1099,8 @@ button:disabled {
   .history-filter button { flex: 0 0 auto; white-space: nowrap; }
   .section-heading { flex-direction: column; align-items: stretch; }
   .section-heading > .inline-button { width: 100%; }
+  .wish-heading-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .wish-heading-actions .inline-button { width: 100%; }
   .section-heading-with-filters { align-items: stretch; }
   .movement-row { grid-template-columns: 2.1rem minmax(0, 1fr); gap: var(--spacing-sm); padding: var(--spacing-md); }
   .movement-row--plain { grid-template-columns: minmax(0, 1fr) auto; }

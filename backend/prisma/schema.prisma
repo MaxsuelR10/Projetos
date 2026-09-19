@@ -101,6 +101,12 @@ enum GoalStatus {
   ARCHIVED
 }
 
+enum WishStatus {
+  ACTIVE
+  PURCHASED
+  ARCHIVED
+}
+
 enum InvestmentType {
   CDB
   TESOURO
@@ -145,6 +151,8 @@ model User {
   subscriptions             Subscription[]
   budgets                   Budget[]
   financialGoals            FinancialGoal[]
+  wishItems                 WishItem[]
+  paymentReminders          PaymentReminder[]
   investments               Investment[]
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
@@ -410,6 +418,40 @@ model FinancialGoal {
 
   @@unique([userId, normalizedName])
   @@index([userId, status])
+}
+
+model WishItem {
+  id             String     @id @default(uuid()) @db.Uuid
+  userId         String     @db.Uuid
+  name           String     @db.VarChar(160)
+  normalizedName String     @db.VarChar(160)
+  amount         Decimal    @db.Decimal(19, 4)
+  url            String?    @db.VarChar(2048)
+  notes          String?    @db.Text
+  status         WishStatus @default(ACTIVE)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
+
+  @@unique([id, userId])
+  @@index([userId, status, createdAt])
+  @@index([userId, normalizedName])
+}
+
+model PaymentReminder {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  title     String   @db.VarChar(160)
+  dueDate   DateTime? @db.Date
+  amount    Decimal? @db.Decimal(19, 4)
+  notes     String?  @db.Text
+  isDone    Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([id, userId])
+  @@index([userId, isDone, dueDate])
 }
 
 model Investment {
