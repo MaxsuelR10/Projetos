@@ -1052,13 +1052,17 @@ button:disabled {
 }
 
 @media (min-width: 64rem) {
-  .app-shell { padding-bottom: 0; }
+  .app-shell { --sidebar-width: 15.5rem; padding-bottom: 0; padding-left: var(--sidebar-width); }
   .page-stack { padding-bottom: 2rem; }
-  .app-header { width: min(100% - 4rem, 74rem); }
-  .app-content { width: min(100% - 4rem, 74rem); }
-  .desktop-nav { width: min(100% - 4rem, 74rem); display: flex; gap: 0.4rem; margin: 0 auto; padding-bottom: 0.8rem; border-bottom: 1px solid var(--color-line); }
-  .desktop-nav a { display: inline-flex; gap: 0.4rem; padding: 0.58rem 0.8rem; border-radius: 0.6rem; color: var(--color-muted); font-size: 0.86rem; font-weight: 800; text-decoration: none; }
+  .app-header { position: fixed; z-index: 20; inset: 0 auto 0 0; width: var(--sidebar-width); min-height: 100svh; display: flex; flex-direction: column; align-items: stretch; gap: 2rem; margin: 0; padding: 1.5rem 1rem; border-right: 1px solid var(--color-line); background: rgba(255, 255, 255, 0.88); box-sizing: border-box; backdrop-filter: blur(16px); }
+  .app-brand { align-self: flex-start; max-width: 100%; }
+  .app-brand > span:last-child { overflow-wrap: anywhere; }
+  .user-menu { justify-content: space-between; margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--color-line); }
+  .desktop-nav { position: fixed; z-index: 21; inset: 6.1rem auto 5.5rem 0; width: var(--sidebar-width); display: grid; align-content: start; gap: 0.35rem; margin: 0; padding: 0 1rem; overflow-y: auto; box-sizing: border-box; }
+  .desktop-nav a { display: flex; align-items: center; gap: 0.7rem; min-height: 2.75rem; padding: 0.58rem 0.75rem; border-radius: 0.65rem; color: var(--color-muted); font-size: 0.86rem; font-weight: 800; text-decoration: none; }
+  .desktop-nav a > span { width: 1.2rem; text-align: center; font-size: 1.05rem; }
   .desktop-nav a.active { color: var(--color-brand); background: var(--color-brand-soft); }
+  .app-content { width: min(100% - 4rem, 74rem); margin: 0 auto; }
   .mobile-nav { display: none; }
   .mobile-more-overlay { display: none; }
   .page-stack { padding-top: 2rem; }
