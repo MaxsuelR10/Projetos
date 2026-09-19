@@ -17,9 +17,9 @@ const monthPattern = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 const monthValue = z.string().regex(monthPattern, "Informe o mês no formato AAAA-MM");
 const nullableMonth = monthValue.nullable();
 const nullableCardName = z.string().trim().min(1).max(100).nullable();
-// Kept in code to avoid accidentally switching the no-cost assistant to a
-// paid, preview, or retired model through a deployment environment variable.
-const GEMINI_FREE_MODEL = "gemini-2.5-flash";
+// Only free-tier Flash models are attempted. The current model is tried first,
+// with a stable earlier Flash model as a compatibility fallback.
+const GEMINI_FREE_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"];
 
 const snapshotArgsSchema = z.object({
   start_month: nullableMonth,
@@ -346,6 +346,7 @@ function providerError(error) {
   const diagnostics = {
     providerStatus: Number.isInteger(error?.status) ? error.status : null,
     providerCode: typeof error?.code === "string" ? error.code : null,
+    providerModel: typeof error?.model === "string" ? error.model : null,
   };
   console.error("Falha ao consultar o provedor de IA", { name: error?.name, ...diagnostics });
   if (error?.status === 401 || error?.status === 403) return new AppError("A configuração do assistente financeiro não é válida no momento.", 503, "ASSISTANT_PROVIDER_CONFIGURATION", diagnostics);
@@ -429,34 +430,44 @@ function geminiTools() {
 }
 
 async function callGemini({ conversationItems }) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_FREE_MODEL)}:generateContent`;
-  const result = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": env.GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: FINANCIAL_ASSISTANT_SYSTEM_PROMPT }] },
-      contents: conversationItems,
-      tools: geminiTools(),
-      toolConfig: { functionCallingConfig: { mode: "AUTO" } },
-      generationConfig: { maxOutputTokens: 900, temperature: 0.2 },
-      safetySettings: [
-        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
-      ],
-    }),
-  });
-  if (!result.ok) {
+  const requestBody = {
+    systemInstruction: { parts: [{ text: FINANCIAL_ASSISTANT_SYSTEM_PROMPT }] },
+    contents: conversationItems,
+    tools: geminiTools(),
+    toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+    generationConfig: { maxOutputTokens: 900, temperature: 0.2 },
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+    ],
+  };
+
+  let lastNotFound;
+  for (const model of GEMINI_FREE_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    const result = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify(requestBody),
+    });
+    if (result.ok) return result.json();
+
     const body = await result.json().catch(() => null);
     const detail = body?.error?.message;
     const error = new Error(`Gemini request failed with ${result.status}${detail ? `: ${detail}` : ""}`);
     error.status = result.status;
     error.code = body?.error?.status;
+    error.model = model;
+    if (result.status === 404) {
+      lastNotFound = error;
+      continue;
+    }
     throw error;
   }
-  return result.json();
+  throw lastNotFound;
 }

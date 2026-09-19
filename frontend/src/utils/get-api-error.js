@@ -19,7 +19,8 @@ export function getApiError(error, fallback = 'Não foi possível concluir a sol
   if (apiError?.code === 'ASSISTANT_PROVIDER_ERROR' && apiError?.details) {
     const status = apiError.details.providerStatus ? `HTTP ${apiError.details.providerStatus}` : 'erro de conexão'
     const providerCode = apiError.details.providerCode ? ` (${apiError.details.providerCode})` : ''
-    return `O Gemini não aceitou esta solicitação: ${status}${providerCode}. Nenhuma cobrança foi feita.`
+    const providerModel = apiError.details.providerModel ? ` Modelo: ${apiError.details.providerModel}.` : ''
+    return `O Gemini não aceitou esta solicitação: ${status}${providerCode}.${providerModel} Nenhuma cobrança foi feita.`
   }
   if (apiError?.message && apiError.code !== 'INTERNAL_ERROR') return apiError.message
   if (error.code === 'ECONNABORTED') return 'A API demorou para responder.'
