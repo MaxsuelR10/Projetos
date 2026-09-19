@@ -17,6 +17,9 @@ const monthPattern = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 const monthValue = z.string().regex(monthPattern, "Informe o mês no formato AAAA-MM");
 const nullableMonth = monthValue.nullable();
 const nullableCardName = z.string().trim().min(1).max(100).nullable();
+// Kept in code to avoid accidentally switching the no-cost assistant to a
+// paid, preview, or retired model through a deployment environment variable.
+const GEMINI_FREE_MODEL = "gemini-2.5-flash";
 
 const snapshotArgsSchema = z.object({
   start_month: nullableMonth,
@@ -426,7 +429,7 @@ function geminiTools() {
 }
 
 async function callGemini({ conversationItems }) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_FREE_MODEL)}:generateContent`;
   const result = await fetch(url, {
     method: "POST",
     headers: {

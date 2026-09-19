@@ -24,7 +24,6 @@ const envSchema = z.object({
   // The rest of the application stays available while the assistant is not
   // configured in the deploy environment.
   GEMINI_API_KEY: z.string().min(1).optional(),
-  GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
 });
 
 const result = envSchema.safeParse(process.env);

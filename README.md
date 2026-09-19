@@ -129,7 +129,6 @@ JWT_EXPIRES_IN=7d
 JWT_COOKIE_DAYS=7
 CORS_ORIGIN=http://localhost:5173
 GEMINI_API_KEY=sua_chave_do_gemini_apenas_no_backend
-GEMINI_MODEL=gemini-2.5-flash
 ```
 
 O `.env` é ignorado pelo Git. Nunca use dados reais no `.env.example`.
