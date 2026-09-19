@@ -23,8 +23,8 @@ const envSchema = z.object({
   CORS_ORIGIN: z.url().default("http://localhost:5173"),
   // The rest of the application stays available while the assistant is not
   // configured in the deploy environment.
-  OPENAI_API_KEY: z.string().min(1).optional(),
-  OPENAI_MODEL: z.string().min(1).default("gpt-5"),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -39,7 +39,7 @@ if (!result.success) {
 
 export const env = result.data;
 
-export function hasOpenAiConfiguration() {
-  const key = env.OPENAI_API_KEY?.trim();
+export function hasGeminiConfiguration() {
+  const key = env.GEMINI_API_KEY?.trim();
   return Boolean(key && !/^(sua[-_ ]?chave|sua[-_ ]?api[-_ ]?key|changeme|placeholder)/i.test(key));
 }

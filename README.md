@@ -1,8 +1,9 @@
 # Controle de Finanças
 
 Sistema web pessoal de controle financeiro, desenvolvido para uso local. O
-assistente financeiro é opcional e usa a API da OpenAI somente quando uma chave
-é configurada no backend.
+assistente financeiro é opcional e usa a API do Gemini somente quando uma chave
+é configurada no backend. O projeto pode usar o plano gratuito do Gemini, sujeito
+às cotas da API; nenhuma cobrança é habilitada pelo código.
 
 ## Estado atual
 
@@ -98,7 +99,7 @@ ferramenta antes de consultar o PostgreSQL.
 - Node.js e Express;
 - Prisma ORM e PostgreSQL local;
 - JWT, bcrypt e Zod;
-- SDK da OpenAI com Responses API e Function Calling (opcional);
+- API REST do Google Gemini com Function Calling (opcional);
 - Vitest e Supertest.
 
 Todas as dependências são gratuitas e executadas localmente.
@@ -127,12 +128,12 @@ JWT_SECRET=um-segredo-local-forte-com-pelo-menos-32-caracteres
 JWT_EXPIRES_IN=7d
 JWT_COOKIE_DAYS=7
 CORS_ORIGIN=http://localhost:5173
-OPENAI_API_KEY=sua_chave_da_openai_apenas_no_backend
-OPENAI_MODEL=gpt-5
+GEMINI_API_KEY=sua_chave_do_gemini_apenas_no_backend
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 O `.env` é ignorado pelo Git. Nunca use dados reais no `.env.example`.
-Sem `OPENAI_API_KEY`, as demais funcionalidades continuam disponíveis e o chat
+Sem `GEMINI_API_KEY`, as demais funcionalidades continuam disponíveis e o chat
 informa que precisa ser configurado, sem tentar inventar uma análise.
 
 Valide e aplique o banco:

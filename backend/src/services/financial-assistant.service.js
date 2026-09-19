@@ -1,8 +1,6 @@
-import { createHash } from "node:crypto";
-import OpenAI from "openai";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { env, hasOpenAiConfiguration } from "../config/env.js";
+import { env, hasGeminiConfiguration } from "../config/env.js";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import {
@@ -332,19 +330,9 @@ export async function executeFinancialTool(userId, name, rawArguments) {
   return handler(userId, rawArguments);
 }
 
-function safeSafetyIdentifier(userId) {
-  return createHash("sha256").update(userId).digest("hex");
-}
-
-function readToolArguments(call) {
-  try { return JSON.parse(call.arguments); } catch {
-    throw new AppError("A IA retornou uma consulta inválida", 502, "ASSISTANT_INVALID_TOOL_CALL");
-  }
-}
-
 function assistantServiceUnavailable() {
   return new AppError(
-    "O assistente financeiro ainda não foi configurado. Cadastre uma OPENAI_API_KEY válida nas variáveis de ambiente do backend e faça um novo deploy.",
+    "O assistente financeiro ainda não foi configurado. Cadastre uma GEMINI_API_KEY válida nas variáveis de ambiente do backend e faça um novo deploy.",
     503,
     "ASSISTANT_NOT_CONFIGURED",
   );
@@ -359,35 +347,26 @@ function providerError(error) {
 }
 
 export async function answerFinancialQuestion({ userId, message }) {
-  if (!hasOpenAiConfiguration()) throw assistantServiceUnavailable();
-  const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-  const conversationItems = [{ role: "user", content: message }];
+  if (!hasGeminiConfiguration()) throw assistantServiceUnavailable();
+  const conversationItems = [{ role: "user", parts: [{ text: message }] }];
   const toolsUsed = new Set();
   try {
     for (let round = 0; round < 4; round += 1) {
-      const response = await client.responses.create({
-        model: env.OPENAI_MODEL,
-        instructions: FINANCIAL_ASSISTANT_SYSTEM_PROMPT,
-        input: conversationItems,
-        tools: FINANCIAL_ASSISTANT_TOOLS,
-        tool_choice: "auto",
-        parallel_tool_calls: false,
-        max_output_tokens: 900,
-        store: false,
-        safety_identifier: safeSafetyIdentifier(userId),
-      });
-      const toolCalls = response.output.filter((item) => item.type === "function_call");
+      const response = await callGemini({ conversationItems });
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      const toolCalls = parts.filter((part) => part.functionCall);
       if (!toolCalls.length) {
-        const reply = response.output_text?.trim();
+        const reply = parts.filter((part) => part.text).map((part) => part.text).join("\n").trim();
         if (!reply) throw new AppError("O assistente não retornou uma resposta válida", 502, "ASSISTANT_EMPTY_RESPONSE");
         return { reply, toolsUsed: [...toolsUsed] };
       }
-      conversationItems.push(...response.output);
-      for (const call of toolCalls) {
+      conversationItems.push(response.candidates[0].content);
+      for (const part of toolCalls) {
+        const call = part.functionCall;
         let output;
         try {
           toolsUsed.add(call.name);
-          output = await executeFinancialTool(userId, call.name, readToolArguments(call));
+          output = await executeFinancialTool(userId, call.name, call.args ?? {});
         } catch (error) {
           if (error instanceof AppError || error instanceof z.ZodError) {
             output = { error: error.message, code: error.code ?? "ASSISTANT_TOOL_ARGUMENTS" };
@@ -395,11 +374,78 @@ export async function answerFinancialQuestion({ userId, message }) {
             throw error;
           }
         }
-        conversationItems.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) });
+        conversationItems.push({
+          role: "user",
+          parts: [{
+            functionResponse: {
+              ...(call.id ? { id: call.id } : {}),
+              name: call.name,
+              response: output,
+            },
+          }],
+        });
       }
     }
   } catch (error) {
     throw providerError(error);
   }
   throw new AppError("O assistente precisou de mais consultas do que o permitido. Reformule a pergunta e tente novamente.", 502, "ASSISTANT_TOOL_LOOP_LIMIT");
+}
+
+function toGeminiSchema(schema) {
+  if (!schema || typeof schema !== "object") return schema;
+  const converted = { ...schema };
+  if (Array.isArray(converted.type)) {
+    const nonNullType = converted.type.find((type) => type !== "null");
+    converted.type = nonNullType ?? "string";
+    converted.nullable = true;
+  }
+  if (typeof converted.type === "string") converted.type = converted.type.toUpperCase();
+  if (converted.properties) {
+    converted.properties = Object.fromEntries(Object.entries(converted.properties).map(([key, value]) => [key, toGeminiSchema(value)]));
+  }
+  if (converted.items) converted.items = toGeminiSchema(converted.items);
+  for (const key of ["exclusiveMinimum", "minimum", "maximum", "minLength", "maxLength", "pattern", "strict"]) delete converted[key];
+  delete converted.additionalProperties;
+  return converted;
+}
+
+function geminiTools() {
+  return [{
+    functionDeclarations: FINANCIAL_ASSISTANT_TOOLS.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: toGeminiSchema(tool.parameters),
+    })),
+  }];
+}
+
+async function callGemini({ conversationItems }) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`;
+  const result = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": env.GEMINI_API_KEY,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: FINANCIAL_ASSISTANT_SYSTEM_PROMPT }] },
+      contents: conversationItems,
+      tools: geminiTools(),
+      toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+      generationConfig: { maxOutputTokens: 900, temperature: 0.2 },
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+      ],
+    }),
+  });
+  if (!result.ok) {
+    const error = new Error(`Gemini request failed with ${result.status}`);
+    error.status = result.status;
+    throw error;
+  }
+  return result.json();
 }
