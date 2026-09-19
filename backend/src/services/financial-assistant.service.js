@@ -340,10 +340,14 @@ function assistantServiceUnavailable() {
 
 function providerError(error) {
   if (error instanceof AppError) return error;
-  console.error("Falha ao consultar o provedor de IA", { name: error?.name, status: error?.status, code: error?.code });
-  if (error?.status === 401 || error?.status === 403) return new AppError("A configuração do assistente financeiro não é válida no momento.", 503, "ASSISTANT_PROVIDER_CONFIGURATION");
-  if (error?.status === 429) return new AppError("O assistente está temporariamente muito solicitado. Tente novamente em alguns instantes.", 503, "ASSISTANT_PROVIDER_BUSY");
-  return new AppError("Não foi possível gerar a análise agora. Tente novamente em alguns instantes.", 502, "ASSISTANT_PROVIDER_ERROR");
+  const diagnostics = {
+    providerStatus: Number.isInteger(error?.status) ? error.status : null,
+    providerCode: typeof error?.code === "string" ? error.code : null,
+  };
+  console.error("Falha ao consultar o provedor de IA", { name: error?.name, ...diagnostics });
+  if (error?.status === 401 || error?.status === 403) return new AppError("A configuração do assistente financeiro não é válida no momento.", 503, "ASSISTANT_PROVIDER_CONFIGURATION", diagnostics);
+  if (error?.status === 429) return new AppError("O assistente está temporariamente muito solicitado. Tente novamente em alguns instantes.", 503, "ASSISTANT_PROVIDER_BUSY", diagnostics);
+  return new AppError("Não foi possível gerar a análise agora. Tente novamente em alguns instantes.", 502, "ASSISTANT_PROVIDER_ERROR", diagnostics);
 }
 
 export async function answerFinancialQuestion({ userId, message }) {
