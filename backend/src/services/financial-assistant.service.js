@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
-import { env } from "../config/env.js";
+import { env, hasOpenAiConfiguration } from "../config/env.js";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import {
@@ -344,7 +344,7 @@ function readToolArguments(call) {
 
 function assistantServiceUnavailable() {
   return new AppError(
-    "O assistente financeiro ainda não foi configurado. Adicione OPENAI_API_KEY ao ambiente do backend para ativá-lo.",
+    "O assistente financeiro ainda não foi configurado. Cadastre uma OPENAI_API_KEY válida nas variáveis de ambiente do backend e faça um novo deploy.",
     503,
     "ASSISTANT_NOT_CONFIGURED",
   );
@@ -359,7 +359,7 @@ function providerError(error) {
 }
 
 export async function answerFinancialQuestion({ userId, message }) {
-  if (!env.OPENAI_API_KEY) throw assistantServiceUnavailable();
+  if (!hasOpenAiConfiguration()) throw assistantServiceUnavailable();
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
   const conversationItems = [{ role: "user", content: message }];
   const toolsUsed = new Set();

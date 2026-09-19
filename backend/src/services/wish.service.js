@@ -17,8 +17,12 @@ export async function createWish(userId, data) {
   return serializeWish(item);
 }
 
-export async function updateWishStatus(userId, id, status) {
-  const result = await prisma.wishItem.updateMany({ where: { id, userId }, data: { status } });
+export async function updateWish(userId, id, data) {
+  const updateData = { ...data };
+  if (data.name !== undefined) updateData.normalizedName = normalizeName(data.name);
+  if (data.url !== undefined) updateData.url = data.url || null;
+  if (data.notes !== undefined) updateData.notes = data.notes || null;
+  const result = await prisma.wishItem.updateMany({ where: { id, userId }, data: updateData });
   if (!result.count) throw new AppError("Item da lista de desejos não encontrado", 404, "WISH_NOT_FOUND");
   return serializeWish(await prisma.wishItem.findFirstOrThrow({ where: { id, userId } }));
 }
@@ -38,8 +42,11 @@ export async function createReminder(userId, data) {
   return serializeReminder(item);
 }
 
-export async function updateReminderDone(userId, id, isDone) {
-  const result = await prisma.paymentReminder.updateMany({ where: { id, userId }, data: { isDone } });
+export async function updateReminder(userId, id, data) {
+  const updateData = { ...data };
+  if (data.dueDate !== undefined) updateData.dueDate = data.dueDate ? asDate(data.dueDate) : null;
+  if (data.notes !== undefined) updateData.notes = data.notes || null;
+  const result = await prisma.paymentReminder.updateMany({ where: { id, userId }, data: updateData });
   if (!result.count) throw new AppError("Lembrete não encontrado", 404, "REMINDER_NOT_FOUND");
   return serializeReminder(await prisma.paymentReminder.findFirstOrThrow({ where: { id, userId } }));
 }

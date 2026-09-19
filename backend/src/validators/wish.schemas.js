@@ -12,10 +12,15 @@ export const createWishSchema = z.object({ body: z.object({
   notes: z.string().trim().max(5000).nullable().optional(),
 }).strict() });
 
-export const updateWishSchema = z.object({
-  params: z.object({ id: idSchema }),
-  body: z.object({ status: z.enum(["ACTIVE", "PURCHASED", "ARCHIVED"]) }).strict(),
-});
+const updateWishBodySchema = z.object({
+  name: z.string().trim().min(2).max(160).optional(),
+  amount: positiveMoneySchema.optional(),
+  url: optionalUrlSchema,
+  notes: z.string().trim().max(5000).nullable().optional(),
+  status: z.enum(["ACTIVE", "PURCHASED", "ARCHIVED"]).optional(),
+}).strict().refine((data) => Object.values(data).some((value) => value !== undefined), "Informe ao menos um campo para atualizar");
+
+export const updateWishSchema = z.object({ params: z.object({ id: idSchema }), body: updateWishBodySchema });
 
 export const deleteWishSchema = z.object({ params: z.object({ id: idSchema }) });
 
@@ -26,9 +31,14 @@ export const createReminderSchema = z.object({ body: z.object({
   notes: z.string().trim().max(5000).nullable().optional(),
 }).strict() });
 
-export const updateReminderSchema = z.object({
-  params: z.object({ id: idSchema }),
-  body: z.object({ isDone: z.boolean() }).strict(),
-});
+const updateReminderBodySchema = z.object({
+  title: z.string().trim().min(2).max(160).optional(),
+  dueDate: dateSchema.nullable().optional(),
+  amount: optionalMoneySchema,
+  notes: z.string().trim().max(5000).nullable().optional(),
+  isDone: z.boolean().optional(),
+}).strict().refine((data) => Object.values(data).some((value) => value !== undefined), "Informe ao menos um campo para atualizar");
+
+export const updateReminderSchema = z.object({ params: z.object({ id: idSchema }), body: updateReminderBodySchema });
 
 export const deleteReminderSchema = z.object({ params: z.object({ id: idSchema }) });

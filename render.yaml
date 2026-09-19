@@ -9,3 +9,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      # Secret supplied in the Render Dashboard. Never commit its value.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5

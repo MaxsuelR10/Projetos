@@ -38,3 +38,8 @@ if (!result.success) {
 }
 
 export const env = result.data;
+
+export function hasOpenAiConfiguration() {
+  const key = env.OPENAI_API_KEY?.trim();
+  return Boolean(key && !/^(sua[-_ ]?chave|sua[-_ ]?api[-_ ]?key|changeme|placeholder)/i.test(key));
+}

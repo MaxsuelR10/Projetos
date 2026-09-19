@@ -36,12 +36,16 @@ describe.sequential("lista de desejos e lembretes", () => {
     expect(listed.body).toMatchObject({ wishes: [expect.objectContaining({ id: wish.body.wish.id })], reminders: [expect.objectContaining({ id: reminder.body.reminder.id })] });
   });
 
-  it("valida links e permite concluir registros", async () => {
+  it("valida links, permite editar e concluir registros", async () => {
     expect((await agent.post("/api/wishes/items").send({ name: "Link inválido", amount: "10", url: "sem-link" })).status).toBe(400);
     const listed = await agent.get("/api/wishes");
     const wish = listed.body.wishes[0];
     const reminder = listed.body.reminders[0];
+    const updatedWish = await agent.patch(`/api/wishes/items/${wish.id}`).send({ name: "Notebook revisado", amount: "4200", url: null, notes: "Nova observação" });
+    expect(updatedWish.body.wish).toMatchObject({ name: "Notebook revisado", amount: "4200", url: null, notes: "Nova observação" });
     expect((await agent.patch(`/api/wishes/items/${wish.id}`).send({ status: "PURCHASED" })).body.wish.status).toBe("PURCHASED");
+    const updatedReminder = await agent.patch(`/api/wishes/reminders/${reminder.id}`).send({ title: "Pagar condomínio revisado", dueDate: null, amount: null, notes: "Boleto atualizado" });
+    expect(updatedReminder.body.reminder).toMatchObject({ title: "Pagar condomínio revisado", dueDate: null, amount: null, notes: "Boleto atualizado" });
     expect((await agent.patch(`/api/wishes/reminders/${reminder.id}`).send({ isDone: true })).body.reminder.isDone).toBe(true);
   });
 });
