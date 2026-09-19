@@ -361,6 +361,7 @@ export async function answerFinancialQuestion({ userId, message }) {
         return { reply, toolsUsed: [...toolsUsed] };
       }
       conversationItems.push(response.candidates[0].content);
+      const functionResponses = [];
       for (const part of toolCalls) {
         const call = part.functionCall;
         let output;
@@ -374,17 +375,17 @@ export async function answerFinancialQuestion({ userId, message }) {
             throw error;
           }
         }
-        conversationItems.push({
-          role: "user",
-          parts: [{
-            functionResponse: {
-              ...(call.id ? { id: call.id } : {}),
-              name: call.name,
-              response: output,
-            },
-          }],
+        functionResponses.push({
+          functionResponse: {
+            ...(call.id ? { id: call.id } : {}),
+            name: call.name,
+            response: output,
+          },
         });
       }
+      // Gemini can request multiple functions in one turn. Their results must
+      // be sent back together as one user content item.
+      conversationItems.push({ role: "user", parts: functionResponses });
     }
   } catch (error) {
     throw providerError(error);
@@ -443,8 +444,11 @@ async function callGemini({ conversationItems }) {
     }),
   });
   if (!result.ok) {
-    const error = new Error(`Gemini request failed with ${result.status}`);
+    const body = await result.json().catch(() => null);
+    const detail = body?.error?.message;
+    const error = new Error(`Gemini request failed with ${result.status}${detail ? `: ${detail}` : ""}`);
     error.status = result.status;
+    error.code = body?.error?.status;
     throw error;
   }
   return result.json();
