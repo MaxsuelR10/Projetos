@@ -17,9 +17,14 @@ const monthPattern = /^\d{4}-(?:0[1-9]|1[0-2])$/;
 const monthValue = z.string().regex(monthPattern, "Informe o mês no formato AAAA-MM");
 const nullableMonth = monthValue.nullable();
 const nullableCardName = z.string().trim().min(1).max(100).nullable();
-// Only free-tier Flash models are attempted. The current model is tried first,
-// with a stable earlier Flash model as a compatibility fallback.
-const GEMINI_FREE_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash"];
+// Only Flash models with a documented free tier are attempted. Flash-Lite is
+// stable, supports function calling, and is available to more free API keys
+// than the newer Flash rollout models.
+const GEMINI_FREE_MODELS = [
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-3.8-flash",
+];
 
 const snapshotArgsSchema = z.object({
   start_month: nullableMonth,
