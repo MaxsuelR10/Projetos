@@ -463,7 +463,9 @@ async function callGemini({ conversationItems }) {
     error.status = result.status;
     error.code = body?.error?.status;
     error.model = model;
-    if (result.status === 404) {
+    // Some free-tier model rollouts return UNAVAILABLE (503) instead of NOT_FOUND
+    // while a model is not offered to the current project or region.
+    if (result.status === 404 || (result.status === 503 && error.code === "UNAVAILABLE")) {
       lastNotFound = error;
       continue;
     }
