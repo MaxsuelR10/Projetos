@@ -134,6 +134,12 @@ export async function updateCard(userId, id, data) {
   const nextType = data.type ?? card.type;
   const next = { creditLimit: data.creditLimit ?? card.creditLimit.toString(), closingDay: data.closingDay === undefined ? card.closingDay : data.closingDay, dueDay: data.dueDay === undefined ? card.dueDay : data.dueDay };
   if (nextType === "CREDIT" && (!next.closingDay || !next.dueDay || next.creditLimit === "0")) throw new AppError("Cartão de crédito exige limite, fechamento e vencimento", 400, "INVALID_CREDIT_CARD");
+  if (nextType === "CREDIT" && data.creditLimit !== undefined) {
+    const used = await prisma.cardInstallment.aggregate({ where: { userId, creditCardId: id, status: "PENDING" }, _sum: { amount: true } });
+    if (new Prisma.Decimal(next.creditLimit).lessThan(used._sum.amount ?? 0)) {
+      throw new AppError("O limite não pode ser menor que o valor já utilizado", 409, "CARD_LIMIT_BELOW_USED");
+    }
+  }
   const updated = await prisma.$transaction(async (db) => {
     const result = await db.creditCard.update({ where: { id }, data: { ...(data.name !== undefined ? { name: data.name, normalizedName: normalizeName(data.name) } : {}), ...(data.institution !== undefined ? { institution: nullable(data.institution) } : {}), ...(data.brand !== undefined ? { brand: nullable(data.brand) } : {}), ...(data.type !== undefined ? { type: data.type } : {}), ...(data.creditLimit !== undefined ? { creditLimit: data.creditLimit } : {}), ...(data.closingDay !== undefined ? { closingDay: nextType === "CREDIT" ? data.closingDay : null } : {}), ...(data.dueDay !== undefined ? { dueDay: nextType === "CREDIT" ? data.dueDay : null } : {}), ...(data.color !== undefined ? { color: data.color || null } : {}), ...(data.isActive !== undefined ? { isActive: data.isActive } : {}) } });
     const scheduleChanged = nextType === "CREDIT" && (result.closingDay !== card.closingDay || result.dueDay !== card.dueDay);

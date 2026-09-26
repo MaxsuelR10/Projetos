@@ -8,7 +8,13 @@ export function formatCurrency(value, currency = 'BRL') {
 }
 
 export function parseCurrency(value) {
-  const normalized = String(value ?? '').trim().replace(/R\$\s?/g, '').replace(/\./g, '').replace(',', '.')
+  const rawValue = String(value ?? '').trim().replace(/R\$\s?/g, '').replace(/\s/g, '')
+  // Values loaded from the API use a decimal point (e.g. "56.61"), while the
+  // currency field uses Brazilian formatting (e.g. "R$ 56,61"). Only remove
+  // dots when a comma confirms that they are thousands separators.
+  const normalized = rawValue.includes(',')
+    ? rawValue.replace(/\./g, '').replace(',', '.')
+    : rawValue
   const amount = Number(normalized)
   return Number.isFinite(amount) ? amount.toFixed(2) : ''
 }

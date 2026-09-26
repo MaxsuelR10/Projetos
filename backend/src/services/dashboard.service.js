@@ -112,15 +112,18 @@ async function getExpenseBreakdown(userId, range) {
 }
 
 export async function getDashboard(userId, query = {}) {
-  const startMonth = query.startMonth ?? query.month ?? new Date().toISOString().slice(0, 7);
-  const endMonth = query.endMonth ?? startMonth;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const startMonth = query.startMonth ?? query.month ?? query.startDate?.slice(0, 7) ?? currentMonth;
+  const endMonth = query.endMonth ?? query.endDate?.slice(0, 7) ?? startMonth;
   const months = query.months ?? 6;
   const startRange = monthBounds(startMonth);
   const endRange = monthBounds(endMonth);
-  const range = { start: startRange.start, end: endRange.end };
-  const expenseRange = query.expenseFrom && query.expenseTo
-    ? dateRange(query.expenseFrom, query.expenseTo)
-    : range;
+  const rangeStart = query.startDate ?? startRange.start.toISOString().slice(0, 10);
+  const rangeEnd = query.endDate ?? new Date(endRange.end.getTime() - 86_400_000).toISOString().slice(0, 10);
+  const range = dateRange(rangeStart, rangeEnd);
+  const expenseFrom = query.expenseFrom ?? rangeStart;
+  const expenseTo = query.expenseTo ?? rangeEnd;
+  const expenseRange = dateRange(expenseFrom, expenseTo);
 
   const seriesRanges = Array.from({ length: months }, (_, index) => {
     const date = new Date(Date.UTC(endRange.year, endRange.month - months + index, 1));
@@ -267,10 +270,10 @@ export async function getDashboard(userId, query = {}) {
 
   return {
     period: endMonth,
-    periodRange: { startMonth, endMonth },
+    periodRange: { startMonth, endMonth, startDate: rangeStart, endDate: rangeEnd },
     expensePeriod: {
-      from: query.expenseFrom ?? startRange.start.toISOString().slice(0, 10),
-      to: query.expenseTo ?? new Date(endRange.end.getTime() - 86_400_000).toISOString().slice(0, 10),
+      from: expenseFrom,
+      to: expenseTo,
     },
     summary: {
       availableBalance: money(balance),

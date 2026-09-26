@@ -122,6 +122,28 @@ describe.sequential("importação de extrato CSV", () => {
     const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
     expect(invoices.body.invoices[0]).toMatchObject({ referenceYear: 2026, referenceMonth: 9, totalAmount: "120" });
     expect(invoices.body.invoices[0].dueDate).toContain("2026-09-20");
+
+    const transactions = await agent.get(`/api/transactions?creditCardId=${cardId}&q=Restaurante%20Nubank&limit=10`);
+    const importedPurchase = transactions.body.transactions.find((item) => item.description === "Restaurante Nubank");
+    const edited = await agent.patch(`/api/transactions/${importedPurchase.id}`).send({
+      accountId,
+      categoryId: importedPurchase.category.id,
+      type: "EXPENSE",
+      description: "Restaurante atualizado",
+      amount: "120.00",
+      date: "2026-09-05",
+      dueDate: null,
+      status: "COMPLETED",
+      paymentMethod: "CREDIT_CARD",
+      creditCardId: cardId,
+      installmentsCount: 1,
+      notes: "Categoria revisada",
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.transaction).toMatchObject({ description: "Restaurante atualizado", amount: "120" });
+
+    const cardAfterEdit = await agent.get("/api/cards");
+    expect(cardAfterEdit.body.cards.find((cardItem) => cardItem.id === cardId)).toMatchObject({ usedLimit: "120", availableLimit: "1880" });
   });
 
   it("converte uma despesa importada em compra do cartão e estorna o saldo da conta", async () => {

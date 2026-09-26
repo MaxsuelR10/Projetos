@@ -11,6 +11,8 @@ export const dashboardSchema = z.object({
     month: referenceMonth.optional(),
     startMonth: referenceMonth.optional(),
     endMonth: referenceMonth.optional(),
+    startDate: referenceDate.optional(),
+    endDate: referenceDate.optional(),
     expenseFrom: referenceDate.optional(),
     expenseTo: referenceDate.optional(),
     months: z.coerce.number().int().min(1).max(12).default(6),
@@ -23,6 +25,13 @@ export const dashboardSchema = z.object({
           code: "custom",
           path: ["endMonth"],
           message: "O mês final deve ser igual ou posterior ao mês inicial",
+        });
+      }
+      if (value.startDate && value.endDate && value.endDate < value.startDate) {
+        context.addIssue({
+          code: "custom",
+          path: ["endDate"],
+          message: "A data final deve ser igual ou posterior à data inicial",
         });
       }
       if (value.expenseFrom && value.expenseTo && value.expenseTo < value.expenseFrom) {

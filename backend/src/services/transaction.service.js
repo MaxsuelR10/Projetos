@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { cancelPurchaseInTransaction, createPurchaseInTransaction } from "./card.service.js";
@@ -149,7 +150,10 @@ export async function createTransaction(userId, data) {
 
 export async function updateTransaction(userId, id, data) {
   const transaction = await prisma.$transaction(async (db) => {
-    const existing = await db.transaction.findFirst({ where: { id, userId } });
+    const existing = await db.transaction.findFirst({
+      where: { id, userId },
+      include: { cardPurchase: { select: { installmentsCount: true } } },
+    });
     if (!existing) throw new AppError("Lan\u00e7amento n\u00e3o encontrado", 404, "TRANSACTION_NOT_FOUND");
     if (existing.status === "CANCELLED") throw new AppError("Um lan\u00e7amento cancelado n\u00e3o pode ser alterado", 409, "TRANSACTION_CANCELLED");
 
@@ -162,20 +166,26 @@ export async function updateTransaction(userId, id, data) {
       status: data.status ?? existing.status,
     };
     const nextPaymentMethod = data.paymentMethod ?? existing.paymentMethod;
+    const nextCardId = nextPaymentMethod === "CREDIT_CARD"
+      ? (data.creditCardId ?? existing.creditCardId)
+      : null;
+    const nextDate = data.date ?? existing.date.toISOString().slice(0, 10);
+    const nextInstallmentsCount = data.installmentsCount ?? existing.cardPurchase?.installmentsCount ?? 1;
     if (!next.accountId && (next.type === "INCOME" || nextPaymentMethod !== "CASH")) {
       throw new AppError("Somente despesas em dinheiro podem ficar sem conta", 400, "ACCOUNT_REQUIRED_FOR_PAYMENT_METHOD");
     }
     if (next.accountId) await findActiveAccount(db, userId, next.accountId);
     await validateClassification(db, userId, next);
 
-    const rebuildsCardPurchase = existing.cardPurchaseId && (
-      data.paymentMethod !== undefined
-      || data.creditCardId !== undefined
-      || data.amount !== undefined
-      || data.date !== undefined
-      || data.categoryId !== undefined
-      || data.subcategoryId !== undefined
-    );
+    // Editing descriptive fields does not affect invoices or the available
+    // limit. Rebuild installments only when the financial purchase changes.
+    const rebuildsCardPurchase = Boolean(existing.cardPurchaseId && (
+      nextPaymentMethod !== existing.paymentMethod
+      || nextCardId !== existing.creditCardId
+      || !new Prisma.Decimal(next.amount).equals(existing.amount)
+      || nextDate !== existing.date.toISOString().slice(0, 10)
+      || nextInstallmentsCount !== existing.cardPurchase.installmentsCount
+    ));
 
     // A card transaction owns installments and invoice totals. When one of its
     // financial fields changes, replace the pending purchase atomically so the
@@ -183,9 +193,6 @@ export async function updateTransaction(userId, id, data) {
     if (rebuildsCardPurchase) {
       await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
 
-      const nextCardId = nextPaymentMethod === "CREDIT_CARD"
-        ? (data.creditCardId ?? existing.creditCardId)
-        : null;
       if (nextPaymentMethod === "CREDIT_CARD" && !nextCardId) {
         throw new AppError("Selecione o cartão de crédito utilizado", 400, "CREDIT_CARD_REQUIRED");
       }
@@ -199,8 +206,8 @@ export async function updateTransaction(userId, id, data) {
           subcategoryId: next.subcategoryId,
           description: data.description ?? existing.description,
           totalAmount: next.amount,
-          purchaseDate: data.date ?? existing.date.toISOString().slice(0, 10),
-          installmentsCount: data.installmentsCount ?? 1,
+          purchaseDate: nextDate,
+          installmentsCount: nextInstallmentsCount,
           notes: data.notes ?? existing.notes,
         })
         : null;
@@ -287,6 +294,17 @@ export async function updateTransaction(userId, id, data) {
         ...(data.notes !== undefined ? { notes: nullable(data.notes) } : {}),
       }, include: relationSelect,
     });
+    if (existing.cardPurchaseId) {
+      await db.cardPurchase.update({
+        where: { id: existing.cardPurchaseId },
+        data: {
+          ...(data.categoryId !== undefined ? { categoryId: next.categoryId } : {}),
+          ...(data.subcategoryId !== undefined ? { subcategoryId: next.subcategoryId || null } : {}),
+          ...(data.description !== undefined ? { description: data.description } : {}),
+          ...(data.notes !== undefined ? { notes: nullable(data.notes) } : {}),
+        },
+      });
+    }
     if (next.accountId && affectsBalance(next.status, nextPaymentMethod)) await applyBalance(db, next.accountId, next.type, next.amount);
     return updated;
   });

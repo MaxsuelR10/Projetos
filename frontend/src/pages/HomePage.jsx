@@ -21,18 +21,15 @@ function lastDayOfMonth(value) {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
-function formatReferencePeriod(startMonth, endMonth) {
-  const formatMonth = (value) => {
-    const [year, month] = value.split("-").map(Number);
-    const label = new Intl.DateTimeFormat("pt-BR", {
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    }).format(new Date(Date.UTC(year, month - 1, 1)));
-    return label.charAt(0).toUpperCase() + label.slice(1);
-  };
+function formatReferencePeriod(startDate, endDate) {
+  const formatDate = (value) => new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00.000Z`));
 
-  return `${formatMonth(startMonth)} até ${formatMonth(endMonth)}`;
+  return `${formatDate(startDate)} até ${formatDate(endDate)}`;
 }
 
 function pointOnCircle(percentage, radius) {
@@ -68,8 +65,8 @@ function donutSegmentPath(start, end, outerRadius = 96, innerRadius = 56) {
 export function HomePage() {
   const { user } = useAuth();
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [startMonth, setStartMonth] = useState(currentMonth);
-  const [endMonth, setEndMonth] = useState(() => addMonth(currentMonth));
+  const [startDate, setStartDate] = useState(() => firstDayOfMonth(currentMonth));
+  const [endDate, setEndDate] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
   const [expenseFrom, setExpenseFrom] = useState(() => firstDayOfMonth(currentMonth));
   const [expenseTo, setExpenseTo] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
   const [chartMonths, setChartMonths] = useState(6);
@@ -82,16 +79,16 @@ export function HomePage() {
     let active = true;
     setState((current) => ({ ...current, loading: true, error: "" }));
     dashboardService
-      .get(startMonth, endMonth, chartMonths, expenseFrom, expenseTo)
+      .get(startDate, endDate, chartMonths, expenseFrom, expenseTo)
       .then((data) => active && setState({ loading: false, error: "", data }))
       .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
     return () => { active = false; };
-  }, [chartMonths, endMonth, expenseFrom, expenseTo, startMonth]);
+  }, [chartMonths, endDate, expenseFrom, expenseTo, startDate]);
 
   useEffect(() => {
     let active = true;
     dashboardService
-      .get(startMonth, endMonth, chartMonths, expenseFrom, expenseTo)
+      .get(startDate, endDate, chartMonths, expenseFrom, expenseTo)
       .then((data) => active && setState({ loading: false, error: "", data }))
       .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
     window.addEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
@@ -99,7 +96,7 @@ export function HomePage() {
       active = false;
       window.removeEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
     };
-  }, [chartMonths, endMonth, expenseFrom, expenseTo, loadDashboard, startMonth]);
+  }, [chartMonths, endDate, expenseFrom, expenseTo, loadDashboard, startDate]);
 
   const data = state.data;
   const max = data
@@ -117,7 +114,7 @@ export function HomePage() {
     hoveredSeries ||
     (data?.monthlySeries
       ? data.monthlySeries.find(
-          (item) => item.month === endMonth,
+          (item) => item.month === endDate.slice(0, 7),
         ) || data.monthlySeries[data.monthlySeries.length - 1]
       : null);
 
@@ -150,31 +147,35 @@ export function HomePage() {
         </div>
         <div className="period-picker">
           <span>Período de referência</span>
-          <strong>{formatReferencePeriod(startMonth, endMonth)}</strong>
+          <strong>{formatReferencePeriod(startDate, endDate)}</strong>
           <div className="period-picker-fields">
             <label>
               <span>De</span>
               <input
-                type="month"
-                value={startMonth}
+                type="date"
+                max={endDate}
+                value={startDate}
                 onChange={(event) => {
-                  const nextStart = event.target.value;
-                  setStartMonth(nextStart);
-                  setExpenseFrom(firstDayOfMonth(nextStart));
-                  if (nextStart > endMonth) setEndMonth(nextStart);
-                  if (nextStart > endMonth) setExpenseTo(lastDayOfMonth(nextStart));
+                  const nextStartDate = event.target.value;
+                  setStartDate(nextStartDate);
+                  setExpenseFrom(nextStartDate);
+                  if (nextStartDate > endDate) {
+                    setEndDate(nextStartDate);
+                    setExpenseTo(nextStartDate);
+                  }
                 }}
               />
             </label>
             <label>
               <span>Até</span>
               <input
-                type="month"
-                min={startMonth}
-                value={endMonth}
+                type="date"
+                min={startDate}
+                value={endDate}
                 onChange={(event) => {
-                  setEndMonth(event.target.value);
-                  setExpenseTo(lastDayOfMonth(event.target.value));
+                  const nextEndDate = event.target.value;
+                  setEndDate(nextEndDate);
+                  setExpenseTo(nextEndDate);
                 }}
               />
             </label>
@@ -340,7 +341,7 @@ export function HomePage() {
               <div className="bar-chart" role="img" aria-label="Gráfico de receitas e despesas dos últimos 6 meses">
                 {data.monthlySeries.map((item) => {
                   const isCurrent =
-                    item.month >= startMonth && item.month <= endMonth;
+                    item.month >= startDate.slice(0, 7) && item.month <= endDate.slice(0, 7);
                   const isHovered = hoveredSeries?.label === item.label;
                   return (
                     <div
