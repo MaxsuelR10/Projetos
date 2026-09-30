@@ -16,6 +16,16 @@ export function errorHandler(error, request, response, _next) {
     });
   }
 
+  if (knownError && request.originalUrl.startsWith("/api/assistant")) {
+    console.warn("Falha controlada do assistente", {
+      code: error.code,
+      statusCode: error.statusCode,
+      method: request.method,
+      path: request.originalUrl,
+      userId: request.auth?.userId,
+    });
+  }
+
   const payload = {
     error: {
       code: knownError ? error.code : "INTERNAL_ERROR",

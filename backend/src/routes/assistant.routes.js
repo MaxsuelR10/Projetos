@@ -1,6 +1,6 @@
 import rateLimit from "express-rate-limit";
 import { Router } from "express";
-import { chat } from "../controllers/assistant.controller.js";
+import { chat, getLatestConversation } from "../controllers/assistant.controller.js";
 import { requireAuth } from "../middlewares/auth.middleware.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -13,6 +13,8 @@ const assistantLimiter = rateLimit({
   limit: 20,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  keyGenerator: (request) => request.auth.userId,
+  skipFailedRequests: true,
   message: {
     error: {
       code: "ASSISTANT_RATE_LIMITED",
@@ -22,4 +24,5 @@ const assistantLimiter = rateLimit({
 });
 
 assistantRouter.use(requireAuth);
+assistantRouter.get("/conversations/latest", asyncHandler(getLatestConversation));
 assistantRouter.post("/chat", assistantLimiter, validate(assistantChatSchema), asyncHandler(chat));

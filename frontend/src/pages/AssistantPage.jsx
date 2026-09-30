@@ -20,7 +20,32 @@ export function AssistantPage() {
   const [messages, setMessages] = useState([welcomeMessage])
   const [draft, setDraft] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [conversationId, setConversationId] = useState(null)
   const endOfConversationRef = useRef(null)
+  const requestControllerRef = useRef(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    assistantService.getLatestConversation()
+      .then((conversation) => {
+        if (!isMounted || !conversation) return
+        setConversationId(conversation.id)
+        setMessages([welcomeMessage, ...conversation.messages.map((item) => ({
+          id: item.id,
+          role: item.role === 'USER' ? 'user' : 'assistant',
+          content: item.content,
+        }))])
+      })
+      .catch(() => {
+        // The chat remains usable even if restoring an old conversation fails.
+      })
+
+    return () => {
+      isMounted = false
+      requestControllerRef.current?.abort()
+    }
+  }, [])
 
   useEffect(() => {
     endOfConversationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -36,20 +61,35 @@ export function AssistantPage() {
     setDraft('')
     setIsSending(true)
 
+    const controller = new AbortController()
+    requestControllerRef.current = controller
+
     try {
-      const result = await assistantService.ask(message)
+      const result = await assistantService.ask(message, conversationId, controller.signal)
+      setConversationId(result.conversationId)
       setMessages((current) => [
         ...current,
         { id: crypto.randomUUID(), role: 'assistant', content: result.reply },
       ])
     } catch (error) {
+      if (error.code === 'ERR_CANCELED') return
       setMessages((current) => [
         ...current,
         { id: crypto.randomUUID(), role: 'assistant error', content: getApiError(error) },
       ])
     } finally {
-      setIsSending(false)
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null
+        setIsSending(false)
+      }
     }
+  }
+
+  function startNewConversation() {
+    if (isSending) return
+    setConversationId(null)
+    setMessages([welcomeMessage])
+    setDraft('')
   }
 
   return (
@@ -63,7 +103,7 @@ export function AssistantPage() {
       <section className="assistant-shell" aria-label="Conversa com o assistente financeiro">
         <div className="assistant-disclaimer" role="note">
           <span aria-hidden="true">⌁</span>
-          <p>O assistente não movimenta dinheiro nem altera seus registros. Projeções são estimativas com base nos lançamentos atuais.</p>
+          <p>O assistente não movimenta dinheiro nem altera seus registros. Projeções são estimativas com base nos lançamentos atuais. Dados estritamente necessários são processados pelo provedor de IA.</p>
         </div>
 
         <div className="assistant-messages" aria-live="polite" aria-busy={isSending}>
@@ -89,6 +129,12 @@ export function AssistantPage() {
                 {suggestion}
               </button>
             ))}
+          </div>
+        ) : null}
+
+        {messages.length > 1 ? (
+          <div className="assistant-suggestions">
+            <button className="secondary-button" type="button" onClick={startNewConversation} disabled={isSending}>Nova conversa</button>
           </div>
         ) : null}
 

@@ -47,14 +47,20 @@ equivalente calculado localmente, sem consultar APIs externas.
 ## Assistente financeiro
 
 O chat em `/assistente` analisa os dados do usuário autenticado e pode consultar
-resumo financeiro, orçamento por categoria, faturas futuras e simular uma compra
-parcelada. As ferramentas são estritamente de leitura: ele não cria lançamentos,
-não paga faturas e não movimenta dinheiro.
+resumo financeiro, despesas individuais e por categoria, orçamento, faturas e
+parcelas futuras, metas, recorrências, assinaturas, investimentos e simular uma
+compra parcelada. As ferramentas são estritamente de leitura: ele não cria
+lançamentos, não paga faturas e não movimenta dinheiro.
 
 Cada consulta obtém o `userId` exclusivamente do cookie JWT no servidor; a IA
 nunca recebe esse identificador nem pode fornecê-lo como argumento. O backend
-limita o chat a 20 mensagens por 15 minutos e valida todos os argumentos de
-ferramenta antes de consultar o PostgreSQL.
+limita o chat a 20 mensagens bem-sucedidas por usuário a cada 15 minutos, valida
+todos os argumentos de ferramenta antes de consultar o PostgreSQL e preserva as
+últimas mensagens da conversa no banco do próprio usuário.
+
+Os dados estritamente necessários para responder à pergunta são enviados ao
+Gemini. Não use uma chave exposta ou um projeto sem revisar as condições de
+tratamento de dados do provedor e a política de privacidade aplicável.
 
 ## Arquitetura e manutenção
 
@@ -128,10 +134,18 @@ JWT_SECRET=um-segredo-local-forte-com-pelo-menos-32-caracteres
 JWT_EXPIRES_IN=7d
 JWT_COOKIE_DAYS=7
 CORS_ORIGIN=http://localhost:5173
+TRUST_PROXY=0
 GEMINI_API_KEY=sua_chave_do_gemini_apenas_no_backend
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODELS=gemini-3.8-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite
+GEMINI_REQUEST_TIMEOUT_MS=25000
+GEMINI_CHAT_TIMEOUT_MS=55000
+GEMINI_MAX_OUTPUT_TOKENS=4096
 ```
 
 O `.env` é ignorado pelo Git. Nunca use dados reais no `.env.example`.
+`GEMINI_MODEL` mantém compatibilidade com uma configuração de modelo único;
+se `GEMINI_MODELS` estiver definido, ele tem precedência e permite fallbacks.
 Sem `GEMINI_API_KEY`, as demais funcionalidades continuam disponíveis e o chat
 informa que precisa ser configurado, sem tentar inventar uma análise.
 
@@ -159,8 +173,10 @@ npm install
 npm run dev
 ```
 
-O frontend usa `http://localhost:3000/api` por padrão. Para alterar, copie
-`frontend/.env.example` para `frontend/.env` e ajuste `VITE_API_URL`.
+O frontend usa `/api` por padrão, o que funciona com o rewrite do Vercel. Para
+desenvolvimento local, copie `frontend/.env.example` para `frontend/.env` e use
+`VITE_API_URL=http://localhost:3000/api`. Em Render, configure `TRUST_PROXY=1`
+e cadastre `GEMINI_API_KEY` no Dashboard; nunca a versione.
 
 ## Endpoints da Fase 1
 

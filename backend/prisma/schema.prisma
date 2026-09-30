@@ -131,6 +131,11 @@ enum YieldType {
   CUSTOM
 }
 
+enum AssistantMessageRole {
+  USER
+  ASSISTANT
+}
+
 model User {
   id                        String                     @id @default(uuid()) @db.Uuid
   name                      String                     @db.VarChar(120)
@@ -154,6 +159,8 @@ model User {
   wishItems                 WishItem[]
   paymentReminders          PaymentReminder[]
   investments               Investment[]
+  assistantConversations    AssistantConversation[]
+  assistantMessages         AssistantMessage[]
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
 }
@@ -577,4 +584,30 @@ model Transfer {
   @@index([userId, date])
   @@index([fromAccountId, date])
   @@index([toAccountId, date])
+}
+
+model AssistantConversation {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @db.Uuid
+  user      User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messages  AssistantMessage[]
+  createdAt DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@unique([id, userId])
+  @@index([userId, updatedAt])
+}
+
+model AssistantMessage {
+  id             String               @id @default(uuid()) @db.Uuid
+  userId         String               @db.Uuid
+  conversationId String               @db.Uuid
+  role           AssistantMessageRole
+  content        String               @db.Text
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  conversation   AssistantConversation @relation(fields: [conversationId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+
+  @@index([conversationId, createdAt])
+  @@index([userId, createdAt])
 }

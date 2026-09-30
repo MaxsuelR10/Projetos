@@ -10,8 +10,19 @@ function serializeGoal(item) { return { ...item, targetAmount: item.targetAmount
 export async function listBudgets(userId, year, month) {
   const start = new Date(Date.UTC(year, month - 1, 1)); const end = new Date(Date.UTC(year, month, 1));
   const budgets = await prisma.budget.findMany({ where: { userId, year, month }, include: { category: { select: { name: true } } } });
-  const spending = await prisma.transaction.groupBy({ by: ["categoryId"], where: { userId, type: "EXPENSE", status: { not: "CANCELLED" }, creditCardInvoiceId: null, date: { gte: start, lt: end }, categoryId: { in: budgets.map((item) => item.categoryId) } }, _sum: { amount: true } });
-  const byCategory = new Map(spending.map((item) => [item.categoryId, item._sum.amount ?? new Prisma.Decimal(0)]));
+  const categoryIds = budgets.map((item) => item.categoryId);
+  const [cashSpending, cardInstallments] = await Promise.all([
+    prisma.transaction.groupBy({ by: ["categoryId"], where: { userId, type: "EXPENSE", status: { not: "CANCELLED" }, creditCardInvoiceId: null, cardPurchaseId: null, date: { gte: start, lt: end }, categoryId: { in: categoryIds } }, _sum: { amount: true } }),
+    prisma.cardInstallment.findMany({
+      where: { userId, status: { not: "CANCELLED" }, invoice: { referenceYear: year, referenceMonth: month }, purchase: { status: "ACTIVE", categoryId: { in: categoryIds } } },
+      select: { amount: true, purchase: { select: { categoryId: true } } },
+    }),
+  ]);
+  const byCategory = new Map(cashSpending.map((item) => [item.categoryId, item._sum.amount ?? new Prisma.Decimal(0)]));
+  for (const installment of cardInstallments) {
+    const categoryId = installment.purchase.categoryId;
+    byCategory.set(categoryId, new Prisma.Decimal(byCategory.get(categoryId) ?? 0).plus(installment.amount));
+  }
   return budgets.map((item) => serializeBudget(item, byCategory.get(item.categoryId)));
 }
 export async function saveBudget(userId, data) {

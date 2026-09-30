@@ -8,6 +8,7 @@ export const assistantChatSchema = z.object({
         .trim()
         .min(1, "Escreva uma pergunta para o assistente")
         .max(2_000, "A mensagem pode ter no máximo 2.000 caracteres"),
+      conversationId: z.uuid().optional(),
     })
     .strict(),
 });

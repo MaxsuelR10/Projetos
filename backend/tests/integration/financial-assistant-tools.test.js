@@ -16,6 +16,8 @@ let anotherUserId;
 async function removeUser(userId) {
   if (!userId) return;
   await prisma.$transaction([
+    prisma.assistantMessage.deleteMany({ where: { userId } }),
+    prisma.assistantConversation.deleteMany({ where: { userId } }),
     prisma.transaction.deleteMany({ where: { userId } }),
     prisma.cardInstallment.deleteMany({ where: { userId } }),
     prisma.cardPurchase.deleteMany({ where: { userId } }),
@@ -40,7 +42,7 @@ describe.sequential("ferramentas do assistente financeiro", () => {
   });
 
   it("não aceita identificador de usuário nos schemas de ferramenta", () => {
-    expect(FINANCIAL_ASSISTANT_TOOLS).toHaveLength(5);
+    expect(FINANCIAL_ASSISTANT_TOOLS).toHaveLength(9);
     for (const tool of FINANCIAL_ASSISTANT_TOOLS) {
       expect(Object.keys(tool.parameters.properties)).not.toContain("user_id");
       expect(Object.keys(tool.parameters.properties)).not.toContain("userId");
@@ -107,7 +109,7 @@ describe.sequential("ferramentas do assistente financeiro", () => {
 
     const context = await executeFinancialTool(ownerId, "get_wishlist_items", { query: "TV" });
     expect(context).toMatchObject({
-      wish_items: [{ name: "TV para sala", amount: "2499.9", url: "https://example.com/tv" }],
+      wish_items: [{ name: "TV para sala", amount: "2499.9" }],
       pending_payment_reminders: [{ title: "Pagar internet", amount: "99.9", due_date: "2026-10-10" }],
     });
     expect(JSON.stringify(context)).not.toContain("Desejo de outro usuário");

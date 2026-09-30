@@ -9,6 +9,11 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: TRUST_PROXY
+        value: 1
       # Secret supplied in the Render Dashboard. Never commit its value.
       - key: GEMINI_API_KEY
         sync: false
+      # Accepts the single-model configuration used by the current service.
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
