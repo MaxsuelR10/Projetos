@@ -60,7 +60,7 @@ export function geminiModels() {
   if (configured?.length) return [...new Set(configured)];
   if (env.GEMINI_MODEL) return [env.GEMINI_MODEL];
 
-  // Gemini 2.5 access is restricted for some new projects. Prefer current
-  // models and retain the 2.5 model only as a compatibility fallback.
-  return ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash-lite"];
+  // Gemini 2.5 access is restricted for some new projects. Prefer models that
+  // are available to current projects by default.
+  return ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
 }

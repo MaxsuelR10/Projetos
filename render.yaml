@@ -14,6 +14,7 @@ services:
       # Secret supplied in the Render Dashboard. Never commit its value.
       - key: GEMINI_API_KEY
         sync: false
-      # Accepts the single-model configuration used by the current service.
-      - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+      # Use current models that are available to new Gemini API projects. The
+      # backend tries them in order when a model is temporarily unavailable.
+      - key: GEMINI_MODELS
+        value: gemini-3.8-flash,gemini-3.5-flash-lite

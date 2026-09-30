@@ -20,7 +20,7 @@ export function getApiError(error, fallback = 'Não foi possível concluir a sol
     const status = apiError.details.providerStatus ? `HTTP ${apiError.details.providerStatus}` : 'erro de conexão'
     const providerCode = apiError.details.providerCode ? ` (${apiError.details.providerCode})` : ''
     const providerModel = apiError.details.providerModel ? ` Modelo: ${apiError.details.providerModel}.` : ''
-    return `O Gemini não aceitou esta solicitação: ${status}${providerCode}.${providerModel} Nenhuma cobrança foi feita.`
+    return `O Gemini não conseguiu concluir esta solicitação: ${status}${providerCode}.${providerModel} Tente novamente em alguns instantes.`
   }
   if (apiError?.code === 'ASSISTANT_RESPONSE_TRUNCATED') return 'A análise ultrapassou o limite de processamento. Reformule a pergunta com um período ou tema mais específico.'
   if (apiError?.code === 'ASSISTANT_RESPONSE_BLOCKED') return 'O provedor bloqueou esta solicitação por segurança. Reformule a pergunta sem dados sensíveis desnecessários.'

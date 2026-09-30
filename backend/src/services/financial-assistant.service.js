@@ -180,12 +180,13 @@ const toolHandlers = { get_financial_snapshot: getFinancialSnapshot, get_spendin
 export async function executeFinancialTool(userId, name, rawArguments) { const handler = toolHandlers[name]; if (!handler) throw new AppError("Ferramenta financeira não permitida", 400, "ASSISTANT_TOOL_NOT_ALLOWED"); return handler(userId, rawArguments); }
 
 function assistantServiceUnavailable() { return new AppError("O assistente financeiro ainda não foi configurado. Cadastre uma GEMINI_API_KEY válida nas variáveis de ambiente do backend e faça um novo deploy.", 503, "ASSISTANT_NOT_CONFIGURED"); }
-function providerError(error) {
+export function toAssistantProviderError(error) {
   if (error instanceof AppError) return error;
   if (error?.name?.startsWith("Prisma")) return error;
   if (error?.name === "AbortError" || error?.name === "TimeoutError") return new AppError("O assistente excedeu o tempo máximo de resposta. Tente novamente.", 504, "ASSISTANT_TIMEOUT");
   const diagnostics = { providerStatus: Number.isInteger(error?.status) ? error.status : null, providerCode: typeof error?.code === "string" ? error.code : null, providerModel: typeof error?.model === "string" ? error.model : null };
-  console.error("Falha ao consultar o provedor de IA", { name: error?.name, ...diagnostics });
+  const providerMessage = typeof error?.providerMessage === "string" ? error.providerMessage.slice(0, 1_000) : null;
+  console.error("Falha ao consultar o provedor de IA", { name: error?.name, ...diagnostics, providerMessage });
   if (error?.status === 401 || error?.status === 403) return new AppError("A configuração do assistente financeiro não é válida no momento.", 503, "ASSISTANT_PROVIDER_CONFIGURATION", diagnostics);
   if (error?.status === 429) return new AppError("O assistente está temporariamente muito solicitado. Tente novamente em alguns instantes.", 503, "ASSISTANT_PROVIDER_BUSY", diagnostics);
   return new AppError("Não foi possível gerar a análise agora. Tente novamente em alguns instantes.", 502, "ASSISTANT_PROVIDER_ERROR", diagnostics);
@@ -230,7 +231,7 @@ export async function answerFinancialQuestion({ userId, message, conversationId,
       }
       conversationItems.push({ role: "user", parts: functionResponses });
     }
-  } catch (error) { throw providerError(error); }
+  } catch (error) { throw toAssistantProviderError(error); }
   throw new AppError("O assistente precisou de mais consultas do que o permitido. Reformule a pergunta e tente novamente.", 502, "ASSISTANT_TOOL_LOOP_LIMIT");
 }
 
@@ -248,7 +249,7 @@ async function callGemini({ conversationItems, currency, signal }) {
       try { result = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY }, body: JSON.stringify(requestBody({ conversationItems, currency, model })), signal: requestSignal }); }
       catch (error) { error.model = model; lastError = error; if (attempt === 0 && !signal?.aborted) { await delay(500 + Math.floor(Math.random() * 250), signal); continue; } break; }
       if (result.ok) return result.json();
-      const body = await result.json().catch(() => null); const error = new Error(`Gemini request failed with ${result.status}`); error.status = result.status; error.code = body?.error?.status; error.model = model; lastError = error;
+      const body = await result.json().catch(() => null); const error = new Error(`Gemini request failed with ${result.status}`); error.status = result.status; error.code = body?.error?.status; error.model = model; error.providerMessage = body?.error?.message; lastError = error;
       if (isRetryableStatus(result.status) && attempt === 0 && !signal?.aborted) { await delay(500 + Math.floor(Math.random() * 250), signal); continue; }
       break;
     }
