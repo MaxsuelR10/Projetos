@@ -105,7 +105,7 @@ tratamento de dados do provedor e a política de privacidade aplicável.
 - Node.js e Express;
 - Prisma ORM e PostgreSQL local;
 - JWT, bcrypt e Zod;
-- API REST do Google Gemini com Function Calling (opcional);
+- SDK oficial `@google/genai` para a API Gemini com Function Calling (opcional);
 - Vitest e Supertest.
 
 Todas as dependências são gratuitas e executadas localmente.

@@ -97,6 +97,13 @@ describe.sequential("ferramentas do assistente financeiro", () => {
     expect(anonymous.status).toBe(401);
     expect(anonymous.body.code).toBe("UNAUTHENTICATED");
 
+    const invalidToken = await request(app)
+      .post("/api/assistant/chat")
+      .set("Cookie", "controle_financas_token=token-invalido")
+      .send({ message: "Como estão minhas finanças?" });
+    expect(invalidToken.status).toBe(401);
+    expect(invalidToken.body.code).toBe("INVALID_SESSION");
+
     const invalidMessage = await owner.post("/api/assistant/chat").send({ message: " " });
     expect(invalidMessage.status).toBe(400);
     expect(invalidMessage.body.code).toBe("VALIDATION_ERROR");

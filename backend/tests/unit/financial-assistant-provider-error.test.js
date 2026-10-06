@@ -24,7 +24,7 @@ describe("erros do provedor do assistente financeiro", () => {
     expect(errorLog).toHaveBeenCalledWith("Falha ao consultar o provedor de IA", expect.objectContaining({ providerMessage: providerError.providerMessage }));
   });
 
-  it("mantém falhas de credencial e de limite como indisponibilidade controlada", () => {
+  it("mantém falha de credencial como indisponibilidade e preserva 429 para limite de cota", () => {
     const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
 
     expect(toAssistantProviderError(Object.assign(new Error("forbidden"), { status: 403 }))).toMatchObject({
@@ -32,8 +32,17 @@ describe("erros do provedor do assistente financeiro", () => {
       code: "ASSISTANT_PROVIDER_CONFIGURATION",
     });
     expect(toAssistantProviderError(Object.assign(new Error("rate limit"), { status: 429 }))).toMatchObject({
-      statusCode: 503,
+      statusCode: 429,
       code: "ASSISTANT_PROVIDER_BUSY",
+    });
+  });
+
+  it("traduz indisponibilidade do Gemini sem derrubar o servidor", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(toAssistantProviderError(Object.assign(new Error("unavailable"), { status: 503 }))).toMatchObject({
+      statusCode: 503,
+      code: "ASSISTANT_PROVIDER_UNAVAILABLE",
     });
   });
 });

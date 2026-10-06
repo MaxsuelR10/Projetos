@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import {
+  FunctionCallingConfigMode,
+  GoogleGenAI,
+  HarmBlockThreshold,
+  HarmCategory,
+  ThinkingLevel,
+} from "@google/genai";
 import { env, geminiModels, hasGeminiConfiguration } from "../config/env.js";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
@@ -188,7 +195,8 @@ export function toAssistantProviderError(error) {
   const providerMessage = typeof error?.providerMessage === "string" ? error.providerMessage.slice(0, 1_000) : null;
   console.error("Falha ao consultar o provedor de IA", { name: error?.name, ...diagnostics, providerMessage });
   if (error?.status === 401 || error?.status === 403) return new AppError("A configuração do assistente financeiro não é válida no momento.", 503, "ASSISTANT_PROVIDER_CONFIGURATION", diagnostics);
-  if (error?.status === 429) return new AppError("O assistente está temporariamente muito solicitado. Tente novamente em alguns instantes.", 503, "ASSISTANT_PROVIDER_BUSY", diagnostics);
+  if (error?.status === 429) return new AppError("A cota do assistente foi atingida temporariamente. Tente novamente em alguns instantes.", 429, "ASSISTANT_PROVIDER_BUSY", diagnostics);
+  if (error?.status === 503) return new AppError("O provedor do assistente está temporariamente indisponível. Tente novamente em alguns instantes.", 503, "ASSISTANT_PROVIDER_UNAVAILABLE", diagnostics);
   return new AppError("Não foi possível gerar a análise agora. Tente novamente em alguns instantes.", 502, "ASSISTANT_PROVIDER_ERROR", diagnostics);
 }
 
@@ -235,25 +243,62 @@ export async function answerFinancialQuestion({ userId, message, conversationId,
   throw new AppError("O assistente precisou de mais consultas do que o permitido. Reformule a pergunta e tente novamente.", 502, "ASSISTANT_TOOL_LOOP_LIMIT");
 }
 
-function toGeminiSchema(schema) { if (!schema || typeof schema !== "object") return schema; const converted = { ...schema }; if (Array.isArray(converted.type)) { const nonNullType = converted.type.find((type) => type !== "null"); converted.type = nonNullType ?? "string"; converted.nullable = true; } if (typeof converted.type === "string") converted.type = converted.type.toUpperCase(); if (converted.properties) converted.properties = Object.fromEntries(Object.entries(converted.properties).map(([key, value]) => [key, toGeminiSchema(value)])); if (converted.items) converted.items = toGeminiSchema(converted.items); for (const key of ["exclusiveMinimum", "minimum", "maximum", "minLength", "maxLength", "pattern", "strict"]) delete converted[key]; delete converted.additionalProperties; return converted; }
-function geminiTools() { return [{ functionDeclarations: FINANCIAL_ASSISTANT_TOOLS.map((tool) => ({ name: tool.name, description: tool.description, parameters: toGeminiSchema(tool.parameters) })) }]; }
-function requestBody({ conversationItems, currency, model }) { const thinkingConfig = model.startsWith("gemini-2.5-") ? { thinkingBudget: 1_024 } : { thinkingLevel: "low" }; return { systemInstruction: { parts: [{ text: systemPrompt(currency) }] }, contents: conversationItems, tools: geminiTools(), toolConfig: { functionCallingConfig: { mode: "AUTO" } }, generationConfig: { maxOutputTokens: env.GEMINI_MAX_OUTPUT_TOKENS, thinkingConfig }, safetySettings: [{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" }, { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" }, { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" }, { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }], store: false }; }
-function isRetryableStatus(status) { return status === 408 || status === 429 || (status >= 500 && status <= 599); }
-async function delay(milliseconds, signal) { await new Promise((resolve, reject) => { const timeout = setTimeout(resolve, milliseconds); signal?.addEventListener("abort", () => { clearTimeout(timeout); reject(signal.reason ?? new DOMException("Aborted", "AbortError")); }, { once: true }); }); }
-async function callGemini({ conversationItems, currency, signal }) {
+let geminiClient;
+function getGeminiClient() {
+  geminiClient ??= new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+  return geminiClient;
+}
+function geminiTools() { return [{ functionDeclarations: FINANCIAL_ASSISTANT_TOOLS.map((tool) => ({ name: tool.name, description: tool.description, parametersJsonSchema: tool.parameters })) }]; }
+function requestConfig({ currency, model, signal }) {
+  const thinkingConfig = model.startsWith("gemini-2.5-") ? { thinkingBudget: 1_024 } : { thinkingLevel: ThinkingLevel.LOW };
+  return {
+    systemInstruction: systemPrompt(currency),
+    tools: geminiTools(),
+    toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+    maxOutputTokens: env.GEMINI_MAX_OUTPUT_TOKENS,
+    thinkingConfig,
+    safetySettings: [
+      { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+      { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+    ],
+    abortSignal: signal,
+    httpOptions: {
+      timeout: env.GEMINI_REQUEST_TIMEOUT_MS,
+      retryOptions: {
+        attempts: 2,
+        initialDelay: 0.5,
+        maxDelay: 0.75,
+        httpStatusCodes: [408, 429, 500, 502, 503, 504],
+      },
+    },
+  };
+}
+function withProviderDiagnostics(error, model) {
+  error.model = model;
+  try {
+    const providerBody = JSON.parse(error.message);
+    error.code = providerBody?.error?.status;
+    error.providerMessage = providerBody?.error?.message;
+  } catch {
+    error.providerMessage = error.message;
+  }
+  return error;
+}
+export async function callGemini({ conversationItems, currency, signal, client = getGeminiClient() }) {
   let lastError;
   for (const model of geminiModels()) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(env.GEMINI_REQUEST_TIMEOUT_MS)]); let result;
-      try { result = await fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY }, body: JSON.stringify(requestBody({ conversationItems, currency, model })), signal: requestSignal }); }
-      catch (error) { error.model = model; lastError = error; if (attempt === 0 && !signal?.aborted) { await delay(500 + Math.floor(Math.random() * 250), signal); continue; } break; }
-      if (result.ok) return result.json();
-      const body = await result.json().catch(() => null); const error = new Error(`Gemini request failed with ${result.status}`); error.status = result.status; error.code = body?.error?.status; error.model = model; error.providerMessage = body?.error?.message; lastError = error;
-      if (isRetryableStatus(result.status) && attempt === 0 && !signal?.aborted) { await delay(500 + Math.floor(Math.random() * 250), signal); continue; }
-      break;
+    try {
+      return await client.models.generateContent({
+        model,
+        contents: conversationItems,
+        config: requestConfig({ currency, model, signal }),
+      });
+    } catch (error) {
+      lastError = withProviderDiagnostics(error, model);
     }
-    if (!lastError?.status || ![403, 404, 429, 503].includes(lastError.status)) break;
+    if (![404, 503].includes(lastError?.status)) break;
   }
   throw lastError ?? new Error("Gemini request failed without a response");
 }
