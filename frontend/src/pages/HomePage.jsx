@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { dashboardService } from "../services/dashboard.service.js";
+import { cardService } from "../services/card.service.js";
 import { formatCurrency } from "../utils/formatters.js";
 import { getApiError } from "../utils/get-api-error.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -71,32 +72,43 @@ export function HomePage() {
   const [expenseTo, setExpenseTo] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
   const [chartMonths, setChartMonths] = useState(6);
   const [activeChart, setActiveChart] = useState("anatomy");
+  const [cardId, setCardId] = useState("");
+  const [cards, setCards] = useState([]);
+  const [cardsError, setCardsError] = useState("");
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [hoveredSeries, setHoveredSeries] = useState(null);
   const [hoveredPieItem, setHoveredPieItem] = useState(null);
-
-  const loadDashboard = useCallback(() => {
-    let active = true;
-    setState((current) => ({ ...current, loading: true, error: "" }));
-    dashboardService
-      .get(startDate, endDate, chartMonths, expenseFrom, expenseTo)
-      .then((data) => active && setState({ loading: false, error: "", data }))
-      .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
-    return () => { active = false; };
-  }, [chartMonths, endDate, expenseFrom, expenseTo, startDate]);
+  const requestControllerRef = useRef(null);
 
   useEffect(() => {
     let active = true;
+    cardService.list("all")
+      .then((items) => { if (active) setCards(items); })
+      .catch((error) => { if (active) setCardsError(getApiError(error)); });
+    return () => { active = false; };
+  }, []);
+
+  const loadDashboard = useCallback(() => {
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) setState((current) => ({ ...current, loading: true, error: "" }));
+    });
     dashboardService
-      .get(startDate, endDate, chartMonths, expenseFrom, expenseTo)
-      .then((data) => active && setState({ loading: false, error: "", data }))
-      .catch((error) => active && setState({ loading: false, error: getApiError(error), data: null }));
+      .get(startDate, endDate, chartMonths, expenseFrom, expenseTo, cardId, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setState({ loading: false, error: "", data }); })
+      .catch((error) => { if (!controller.signal.aborted) setState({ loading: false, error: getApiError(error), data: null }); });
+  }, [cardId, chartMonths, endDate, expenseFrom, expenseTo, startDate]);
+
+  useEffect(() => {
+    loadDashboard();
     window.addEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
     return () => {
-      active = false;
+      requestControllerRef.current?.abort();
       window.removeEventListener(FINANCIAL_DATA_CHANGED, loadDashboard);
     };
-  }, [chartMonths, endDate, expenseFrom, expenseTo, loadDashboard, startDate]);
+  }, [loadDashboard]);
 
   const data = state.data;
   const max = data
@@ -180,9 +192,19 @@ export function HomePage() {
               />
             </label>
           </div>
+          <label className="dashboard-card-filter">
+            <span>Cartão</span>
+            <select value={cardId} onChange={(event) => { setHoveredSeries(null); setCardId(event.target.value); }}>
+              <option value="">Todos os cartões</option>
+              {cards.map((card) => (
+                <option key={card.id} value={card.id}>{card.name}{card.isActive ? "" : " (inativo)"}</option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
 
+      {cardsError ? <div className="form-alert">Não foi possível carregar os cartões: {cardsError}</div> : null}
       {state.error ? <div className="form-alert">{state.error}</div> : null}
       {state.loading ? (
         <p className="loading-inline">Carregando painel financeiro...</p>
@@ -203,7 +225,7 @@ export function HomePage() {
             </article>
 
             <article className="overview-card">
-              <span>Resultado do período · caixa</span>
+              <span>{cardId ? "Impacto do cartão no período · caixa" : "Resultado do período · caixa"}</span>
               <strong
                 className={
                   Number(data.summary.monthlyResult) >= 0
@@ -215,7 +237,9 @@ export function HomePage() {
                 {formatCurrency(data.summary.monthlyResult, user.currency)}
               </strong>
               <small>
-                {Number(data.summary.monthlyResult) >= 0
+                {cardId
+                  ? "Pagamentos do cartão no período"
+                  : Number(data.summary.monthlyResult) >= 0
                   ? "Recebimentos menos pagamentos"
                   : "Pagamentos superaram recebimentos"}
               </small>
@@ -229,7 +253,7 @@ export function HomePage() {
               <strong className="income-text">
                 {formatCurrency(data.summary.monthlyIncome, user.currency)}
               </strong>
-              <small>Receitas recebidas no período</small>
+              <small>{cardId ? "Receitas gerais recebidas no período" : "Receitas recebidas no período"}</small>
             </article>
 
             <article>
@@ -237,7 +261,7 @@ export function HomePage() {
               <strong className="expense-text">
                 {formatCurrency(data.summary.monthlyExpense, user.currency)}
               </strong>
-              <small>Despesas e faturas pagas no período</small>
+              <small>{cardId ? "Faturas deste cartão pagas no período" : "Despesas e faturas pagas no período"}</small>
             </article>
 
             <article
@@ -273,7 +297,7 @@ export function HomePage() {
               <strong className="income-text">
                 {formatCurrency(data.summary.paidBills ?? "0", user.currency)}
               </strong>
-              <small>Contas e faturas quitadas</small>
+              <small>{cardId ? "Faturas deste cartão quitadas" : "Contas e faturas quitadas"}</small>
             </article>
 
             <article>
@@ -294,7 +318,7 @@ export function HomePage() {
             <div className="chart-header">
               <div>
                 <p className="eyebrow">Comparativo Mensal</p>
-                <h2>Receitas x Despesas</h2>
+                <h2>{cardId ? "Pagamentos do cartão por mês" : "Receitas x Despesas"}</h2>
                 <label className="chart-range-filter">
                   <span>Período do gráfico</span>
                   <select value={chartMonths} onChange={(event) => { setHoveredSeries(null); setChartMonths(Number(event.target.value)) }}>
@@ -309,15 +333,15 @@ export function HomePage() {
                 <div className="chart-active-summary" aria-live="polite">
                   <span className="chart-month-badge">{activeMonthData.label}</span>
                   <div className="chart-values-row">
-                    <span className="chart-val-income">
+                    {!cardId ? <span className="chart-val-income">
                       <i className="dot dot-income" /> Receitas:{" "}
                       <strong>{formatCurrency(activeMonthData.income, user.currency)}</strong>
-                    </span>
+                    </span> : null}
                     <span className="chart-val-expense">
-                      <i className="dot dot-expense" /> Despesas:{" "}
+                      <i className="dot dot-expense" /> {cardId ? "Pagamentos:" : "Despesas:"}{" "}
                       <strong>{formatCurrency(activeMonthData.expense, user.currency)}</strong>
                     </span>
-                    <span className="chart-val-result">
+                    {!cardId ? <span className="chart-val-result">
                       Saldo:{" "}
                       <strong
                         className={
@@ -331,14 +355,14 @@ export function HomePage() {
                           user.currency,
                         )}
                       </strong>
-                    </span>
+                    </span> : null}
                   </div>
                 </div>
               ) : null}
             </div>
 
             <div className="bar-chart-container">
-              <div className="bar-chart" role="img" aria-label="Gráfico de receitas e despesas dos últimos 6 meses">
+              <div className="bar-chart" role="img" aria-label={cardId ? "Gráfico de pagamentos do cartão por mês" : "Gráfico de receitas e despesas por mês"}>
                 {data.monthlySeries.map((item) => {
                   const isCurrent =
                     item.month >= startDate.slice(0, 7) && item.month <= endDate.slice(0, 7);
@@ -353,21 +377,21 @@ export function HomePage() {
                       tabIndex="0"
                     >
                       <div className="bar-values-top">
-                        <span className="val-top income-text">
+                        {!cardId ? <span className="val-top income-text">
                           {Number(item.income) > 0 ? formatCurrency(item.income, user.currency) : ""}
-                        </span>
+                        </span> : null}
                         <span className="val-top expense-text">
                           {Number(item.expense) > 0 ? formatCurrency(item.expense, user.currency) : ""}
                         </span>
                       </div>
                       <div className="bars">
-                        <i
+                        {!cardId ? <i
                           className="bar-income"
                           style={{
                             height: `${Math.max((Number(item.income) / max) * 100, Number(item.income) > 0 ? 4 : 0)}%`,
                           }}
                           title={`Receitas em ${item.label}: ${formatCurrency(item.income, user.currency)}`}
-                        />
+                        /> : null}
                         <i
                           className="bar-expense"
                           style={{
@@ -384,11 +408,11 @@ export function HomePage() {
             </div>
 
             <div className="chart-footer-legend">
-              <span className="legend-item">
+              {!cardId ? <span className="legend-item">
                 <i className="dot dot-income" /> Receitas
-              </span>
+              </span> : null}
               <span className="legend-item">
-                <i className="dot dot-expense" /> Despesas
+                <i className="dot dot-expense" /> {cardId ? "Pagamentos do cartão" : "Despesas"}
               </span>
               <small className="chart-tip">
                 Toque ou passe o mouse nas barras para ver detalhes do mês.

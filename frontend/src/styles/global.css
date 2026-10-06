@@ -582,6 +582,8 @@ button:disabled {
 .period-picker-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; }
 .period-picker-fields label { display: grid; gap: 0.2rem; }
 .period-picker input { width: 100%; min-height: 2.6rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); background: var(--color-surface); }
+.dashboard-card-filter { display: grid; gap: 0.2rem; min-width: 0; }
+.dashboard-card-filter select { width: 100%; min-height: 2.6rem; padding: 0 0.55rem; border: 1px solid var(--color-line); border-radius: var(--radius-sm); color: var(--color-ink); background: var(--color-surface); }
 .metric-grid { display: grid; grid-template-columns: 1fr; gap: 0.7rem; }
 .metric-grid article, .dashboard-panel { padding: 1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); }
 .metric-grid .metric-alert { border-color: #e8c96a; background: #fffaf0; }
@@ -1453,6 +1455,7 @@ textarea { touch-action: manipulation; }
   .app-shell { background: linear-gradient(90deg, #f7faf8 0, #f7faf8 var(--sidebar-width), transparent var(--sidebar-width)); }
   .app-header {
     position: fixed;
+    z-index: 20;
     top: 0;
     margin: 0;
     padding: 1.6rem 1.05rem;

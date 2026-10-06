@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
+import { AppError } from "../utils/app-error.js";
 import {
   monthBounds,
   transactionCompetenceFilter,
@@ -51,9 +52,18 @@ function dueNonCardCommitment() {
   };
 }
 
-async function getCashPeriodTotals(userId, range) {
+async function getCashPeriodTotals(userId, range, cardId) {
   const transactions = await prisma.transaction.findMany({
-    where: cashPeriodTransactions(userId, range),
+    where: {
+      ...cashPeriodTransactions(userId, range),
+      ...(cardId ? {
+        type: "EXPENSE",
+        AND: [{ OR: [
+          { creditCardInvoice: { is: { creditCardId: cardId } } },
+          { creditCardId: cardId, creditCardInvoiceId: null },
+        ] }],
+      } : {}),
+    },
     include: { category: { select: { name: true } } },
   });
 
@@ -79,22 +89,23 @@ function dateRange(from, to) {
   return { start, end };
 }
 
-async function getExpenseBreakdown(userId, range) {
+async function getExpenseBreakdown(userId, range, cardId) {
   const [cashExpenses, cardInstallments] = await Promise.all([
     prisma.transaction.findMany({
       where: {
         ...cashPeriodTransactions(userId, range),
         type: "EXPENSE",
         creditCardInvoiceId: null,
+        ...(cardId ? { creditCardId: cardId } : {}),
       },
       include: { category: { select: { name: true } } },
     }),
     prisma.cardInstallment.findMany({
       where: {
         userId,
-        status: "PENDING",
+        ...(cardId ? { creditCardId: cardId, status: { not: "CANCELLED" }, purchase: { status: "ACTIVE" } } : { status: "PENDING" }),
         invoice: {
-          status: { not: "PAID" },
+          ...(cardId ? {} : { status: { not: "PAID" } }),
           dueDate: { gte: range.start, lt: range.end },
         },
       },
@@ -112,6 +123,11 @@ async function getExpenseBreakdown(userId, range) {
 }
 
 export async function getDashboard(userId, query = {}) {
+  const cardId = query.cardId;
+  if (cardId) {
+    const card = await prisma.creditCard.findFirst({ where: { id: cardId, userId }, select: { id: true } });
+    if (!card) throw new AppError("Cartão não encontrado", 404, "CARD_NOT_FOUND");
+  }
   const currentMonth = new Date().toISOString().slice(0, 7);
   const startMonth = query.startMonth ?? query.month ?? query.startDate?.slice(0, 7) ?? currentMonth;
   const endMonth = query.endMonth ?? query.endDate?.slice(0, 7) ?? startMonth;
@@ -134,6 +150,7 @@ export async function getDashboard(userId, query = {}) {
 
   const [
     periodTotals,
+    allPeriodTotals,
     accounts,
     inactiveAccounts,
     investmentsAggregate,
@@ -143,7 +160,8 @@ export async function getDashboard(userId, query = {}) {
     upcomingInvoices,
     expenseBreakdown,
   ] = await Promise.all([
-    getCashPeriodTotals(userId, range),
+    getCashPeriodTotals(userId, range, cardId),
+    cardId ? getCashPeriodTotals(userId, range) : null,
     prisma.account.findMany({
       where: { userId, isActive: true },
       select: { id: true, name: true, currentBalance: true, color: true },
@@ -157,12 +175,13 @@ export async function getDashboard(userId, query = {}) {
       _sum: { currentAmount: true },
     }),
     prisma.transaction.aggregate({
-      where: pendingPeriodTransactions(userId, range),
+      where: { ...pendingPeriodTransactions(userId, range), ...(cardId ? { creditCardId: cardId } : {}) },
       _sum: { amount: true },
     }),
     prisma.cardInstallment.findMany({
       where: {
         userId,
+        ...(cardId ? { creditCardId: cardId } : {}),
         status: "PENDING",
         invoice: {
           dueDate: { gte: range.start, lt: range.end },
@@ -172,12 +191,13 @@ export async function getDashboard(userId, query = {}) {
       select: { amount: true, dueDate: true },
     }),
     prisma.creditCard.findMany({
-      where: { userId, type: "CREDIT", isActive: true },
+      where: { userId, type: "CREDIT", ...(cardId ? { id: cardId } : { isActive: true }) },
       select: { id: true, name: true, creditLimit: true },
     }),
     prisma.creditCardInvoice.findMany({
       where: {
         userId,
+        ...(cardId ? { creditCardId: cardId } : {}),
         status: { not: "PAID" },
         dueDate: { gte: range.start, lt: range.end },
       },
@@ -185,13 +205,13 @@ export async function getDashboard(userId, query = {}) {
       take: 1,
       include: { creditCard: { select: { name: true } } },
     }),
-    getExpenseBreakdown(userId, expenseRange),
+    getExpenseBreakdown(userId, expenseRange, cardId),
   ]);
 
   const [seriesTotals, cardUsage, commitments, overdueTransactions] =
     await Promise.all([
       Promise.all(
-        seriesRanges.map((seriesRange) => getCashPeriodTotals(userId, seriesRange)),
+        seriesRanges.map((seriesRange) => getCashPeriodTotals(userId, seriesRange, cardId)),
       ),
       Promise.all(
         cards.map(async (card) => {
@@ -220,6 +240,7 @@ export async function getDashboard(userId, query = {}) {
         where: {
           ...pendingPeriodTransactions(userId, range),
           status: "OVERDUE",
+          ...(cardId ? { creditCardId: cardId } : {}),
         },
         _sum: { amount: true },
       }),
@@ -263,7 +284,7 @@ export async function getDashboard(userId, query = {}) {
   const netWorth = balance.plus(inactiveBalance).plus(investedTotal);
 
   // Cash-basis result: money actually received minus money actually paid in the period.
-  const monthlyResult = periodTotals.income.minus(periodTotals.expense);
+  const monthlyResult = cardId ? periodTotals.expense.negated() : periodTotals.income.minus(periodTotals.expense);
 
   const totalPendingBills = pendingAmount.plus(cardPending);
   const paidBills = periodTotals.expense;
@@ -279,7 +300,7 @@ export async function getDashboard(userId, query = {}) {
       availableBalance: money(balance),
       currentBalance: money(balance),
       projectedBalance: money(projectedBalance),
-      monthlyIncome: money(periodTotals.income),
+      monthlyIncome: money(allPeriodTotals?.income ?? periodTotals.income),
       monthlyExpense: money(periodTotals.expense),
       monthlyResult: money(monthlyResult),
       pendingBills: money(totalPendingBills),

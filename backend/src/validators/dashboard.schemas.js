@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { idSchema } from "./common.schemas.js";
 
 const referenceMonth = z
   .string()
@@ -15,6 +16,7 @@ export const dashboardSchema = z.object({
     endDate: referenceDate.optional(),
     expenseFrom: referenceDate.optional(),
     expenseTo: referenceDate.optional(),
+    cardId: idSchema.optional(),
     months: z.coerce.number().int().min(1).max(12).default(6),
     })
     .superRefine((value, context) => {
