@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://controle-financas-api.onrender.com/api/:path*"
+      "destination": "https://app-financas-api-one.vercel.app/api/:path*"
     },
     {
       "source": "/:path*",
