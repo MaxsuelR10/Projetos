@@ -46,16 +46,23 @@ describe.sequential("importação de extrato CSV", () => {
     expect(preview.body.rows[0]).toMatchObject({ type: "EXPENSE", amount: "450.00", categoryName: "Mercado", duplicate: false });
     expect(preview.body.rows[1]).toMatchObject({ type: "INCOME", amount: "3000.00", categoryName: "Salário", duplicate: false });
     expect(preview.body.rows[2]).toMatchObject({ type: "EXPENSE", amount: "50.00", categoryName: "Transporte", duplicate: false });
+    expect(preview.body.account.currentBalance).toBe("100");
+    expect(preview.body.summary).toMatchObject({ currentBalance: "100", income: "3000", expense: "500", projectedBalance: "2600" });
+    expect(preview.body.importId).toMatch(/^[0-9a-f-]{36}$/);
 
     const incomeOnlyPreview = await agent.post("/api/imports/csv/preview").send({ accountId, content, type: "INCOME" });
     expect(incomeOnlyPreview.status).toBe(200);
     expect(incomeOnlyPreview.body.rows.every((row) => row.type === "INCOME")).toBe(true);
     expect(incomeOnlyPreview.body.rows[0]).toMatchObject({ categoryName: "Outros" });
 
-    const rows = preview.body.rows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate }));
-    const imported = await agent.post("/api/imports/csv/commit").send({ accountId, rows });
+    const rows = preview.body.rows.map(({ importKey, date, description, amount, type, categoryId, duplicate }) => ({ importKey, date, description, amount, type, categoryId, allowDuplicate: duplicate }));
+    const imported = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, rows });
     expect(imported.status).toBe(201);
     expect(imported.body).toMatchObject({ imported: 3, skipped: 0 });
+    const repeatedCommit = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, rows });
+    expect(repeatedCommit.status).toBe(201);
+    expect(repeatedCommit.body).toMatchObject({ imported: 0, ignored: 0, duplicates: 3, rejected: 0 });
+
 
     const movements = await agent.get(`/api/transactions?accountId=${accountId}&from=2026-09-01&to=2026-09-30&limit=10`);
     expect(movements.status).toBe(200);
@@ -70,6 +77,12 @@ describe.sequential("importação de extrato CSV", () => {
     const duplicatePreview = await agent.post("/api/imports/csv/preview").send({ accountId, content });
     expect(duplicatePreview.status).toBe(200);
     expect(duplicatePreview.body.rows.every((row) => row.duplicate)).toBe(true);
+
+    const invalidPreview = await agent.post("/api/imports/csv/preview").send({ accountId, content: "Data;Descrição;Valor\n31/02/2026;;zero" });
+    expect(invalidPreview.status).toBe(200);
+    expect(invalidPreview.body.rows).toHaveLength(1);
+    expect(invalidPreview.body.rows[0]).toMatchObject({ valid: false, duplicate: false });
+    expect(invalidPreview.body.rows[0].issues).toEqual(expect.arrayContaining(["Data inválida", "Descrição ausente", "Valor inválido ou zerado"]));
 
     const storedAccount = await agent.get(`/api/accounts/${accountId}`);
     expect(storedAccount.body.account.currentBalance).toBe("2600");
@@ -90,8 +103,8 @@ describe.sequential("importação de extrato CSV", () => {
     expect(preview.status).toBe(200);
     expect(preview.body.rows).toHaveLength(20);
 
-    const rows = preview.body.rows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate }));
-    const imported = await agent.post("/api/imports/csv/commit").send({ accountId, rows });
+    const rows = preview.body.rows.map(({ importKey, date, description, amount, type, categoryId, duplicate }) => ({ importKey, date, description, amount, type, categoryId, allowDuplicate: duplicate }));
+    const imported = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, rows });
     expect(imported.status).toBe(201);
     expect(imported.body).toMatchObject({ imported: 20, skipped: 0 });
 
@@ -110,8 +123,8 @@ describe.sequential("importação de extrato CSV", () => {
     const content = "date,title,amount\n2026-09-05,Restaurante Nubank,-120.00";
     const preview = await agent.post("/api/imports/csv/preview").send({ accountId, content });
     expect(preview.status).toBe(200);
-    const rows = preview.body.rows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description, amount, type, categoryId, duplicate }));
-    const imported = await agent.post("/api/imports/csv/commit").send({ accountId, paymentMethod: "CREDIT_CARD", creditCardId: cardId, rows });
+    const rows = preview.body.rows.map(({ importKey, date, description, amount, type, categoryId, duplicate }) => ({ importKey, date, description, amount, type, categoryId, allowDuplicate: duplicate }));
+    const imported = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, paymentMethod: "CREDIT_CARD", creditCardId: cardId, rows });
     expect(imported.status).toBe(201);
     expect(imported.body).toMatchObject({ imported: 1, skipped: 0 });
 
@@ -160,5 +173,49 @@ describe.sequential("importação de extrato CSV", () => {
     expect(account.body.account.currentBalance).toBe("3030");
     const cards = await agent.get("/api/cards");
     expect(cards.body.cards.find((cardItem) => cardItem.id === cardId)).toMatchObject({ usedLimit: "570", availableLimit: "1430" });
+  });
+  it("faz rollback do lote inteiro quando uma linha deixa de ser válida", async () => {
+    const balanceBefore = await agent.get(`/api/accounts/${accountId}`);
+    const content = "Data;Descrição;Valor\n10/09/2026;Teste atômico 1;-10,00\n11/09/2026;Teste atômico 2;-20,00";
+    const preview = await agent.post("/api/imports/csv/preview").send({ accountId, content });
+    expect(preview.status).toBe(200);
+    const rows = preview.body.rows.map(({ importKey, date, description, amount, type, categoryId }) => ({ importKey, date, description, amount, type, categoryId }));
+    rows[1].categoryId = randomUUID();
+
+    const failed = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, rows });
+    expect(failed.status).toBe(400);
+
+    const balanceAfter = await agent.get(`/api/accounts/${accountId}`);
+    expect(balanceAfter.body.account.currentBalance).toBe(balanceBefore.body.account.currentBalance);
+    const transactions = await agent.get(`/api/transactions?accountId=${accountId}&q=Teste%20atômico&limit=10`);
+    expect(transactions.body.transactions).toHaveLength(0);
+  });
+
+  it("permite confirmar um possível duplicado sem permitir reenvio da mesma prévia", async () => {
+    const content = "Data;Descrição;Valor\n05/09/2026;Mercado Central;-450,00";
+    const preview = await agent.post("/api/imports/csv/preview").send({ accountId, content });
+    expect(preview.status).toBe(200);
+    expect(preview.body.rows[0].duplicate).toBe(true);
+    const row = preview.body.rows[0];
+    const rows = [{
+      importKey: row.importKey,
+      date: row.date,
+      description: row.description,
+      amount: row.amount,
+      type: row.type,
+      categoryId: row.categoryId,
+      allowDuplicate: true,
+    }];
+
+    const imported = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, rows });
+    expect(imported.status).toBe(201);
+    expect(imported.body).toMatchObject({ imported: 1, duplicates: 0 });
+
+    const repeated = await agent.post("/api/imports/csv/commit").send({ importId: preview.body.importId, accountId, rows });
+    expect(repeated.status).toBe(201);
+    expect(repeated.body).toMatchObject({ imported: 0, duplicates: 1 });
+
+    const account = await agent.get(`/api/accounts/${accountId}`);
+    expect(account.body.account.currentBalance).toBe("2580");
   });
 });

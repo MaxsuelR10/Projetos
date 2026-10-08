@@ -1,6 +1,6 @@
 # Próxima atualização — Importação com prévia e reconciliação
 
-Status: pronta para iniciar no próximo ciclo.
+Status: implementada em 8 de outubro de 2026.
 
 ## Objetivo
 
@@ -61,3 +61,13 @@ lançamento é criado antes de o usuário entender o efeito do arquivo.
 - Operação já existente no sistema.
 - Correção manual de categoria antes de confirmar.
 - Falha durante a confirmação com rollback integral.
+
+## Entregue
+
+- Prévia sem alteração de saldo, com impacto antes/depois.
+- Linhas inválidas visíveis e corrigíveis.
+- Duplicidades destacadas, desmarcadas por padrão e confirmáveis pelo usuário.
+- Confirmação única e atômica de até 500 linhas.
+- Identificadores persistentes por prévia e linha para impedir reenvio.
+- Resultado final com importados, ignorados, duplicados, recusados e saldo.
+- Detecção automática de receitas e despesas em extratos mistos.

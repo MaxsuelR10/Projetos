@@ -2,12 +2,13 @@ import { z } from "zod";
 import { idSchema, paymentMethodSchema, positiveMoneySchema, transactionTypeSchema } from "./common.schemas.js";
 
 const importRowSchema = z.object({
+  importKey: z.uuid("Identificador da linha inválido"),
   date: z.iso.date("Data inválida"),
   description: z.string().trim().min(2).max(180),
   amount: positiveMoneySchema,
   type: transactionTypeSchema,
   categoryId: idSchema,
-  duplicate: z.boolean().optional(),
+  allowDuplicate: z.boolean().default(false),
 });
 
 export const previewCsvImportSchema = z.object({
@@ -16,9 +17,11 @@ export const previewCsvImportSchema = z.object({
 
 export const commitCsvImportSchema = z.object({
   body: z.object({
+    importId: z.uuid("Identificador da importação inválido"),
     accountId: idSchema,
     paymentMethod: paymentMethodSchema.default("OTHER"),
     creditCardId: idSchema.nullable().optional(),
+    ignoredCount: z.number().int().min(0).max(500).default(0),
     rows: z.array(importRowSchema).min(1).max(500),
   }).strict(),
 }).superRefine(({ body }, context) => {

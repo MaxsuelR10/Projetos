@@ -275,6 +275,8 @@ model Transaction {
   creditCardInvoiceId    String?               @db.Uuid
   cardPurchaseId         String?               @db.Uuid
   recurringTransactionId String?               @db.Uuid
+  importId               String?               @db.Uuid
+  importRowKey           String?               @db.VarChar(64)
   user                   User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
   account                Account?              @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
   category               Category              @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
@@ -289,6 +291,7 @@ model Transaction {
   @@unique([creditCardInvoiceId, userId])
   @@unique([cardPurchaseId, userId])
   @@unique([recurringTransactionId, date])
+  @@unique([userId, importId, importRowKey])
   @@index([userId, date])
   @@index([userId, status, settledAt])
   @@index([userId, status, dueDate])

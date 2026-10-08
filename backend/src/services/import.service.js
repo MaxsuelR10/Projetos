@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { normalizeName } from "../utils/normalize-name.js";
 import { createPurchaseInTransaction } from "./card.service.js";
 
+const MAX_IMPORT_ROWS = 500;
 const columnAliases = {
   date: ["data", "date", "data da transacao", "data transacao", "data do lancamento"],
   description: ["descricao", "description", "titulo", "title", "lancamento", "historico", "estabelecimento", "transacao"],
@@ -66,12 +68,22 @@ function columnIndex(headers, names) {
   return headers.findIndex((header) => names.includes(header) || names.some((name) => header.includes(name)));
 }
 
+function validIsoDate(year, month, day) {
+  const candidate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  if (
+    candidate.getUTCFullYear() !== Number(year)
+    || candidate.getUTCMonth() !== Number(month) - 1
+    || candidate.getUTCDate() !== Number(day)
+  ) return null;
+  return `${year}-${month}-${day}`;
+}
+
 function parseDate(value) {
   const input = String(value || "").trim();
   let match = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  if (match) return validIsoDate(match[1], match[2], match[3]);
   match = input.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  if (match) return validIsoDate(match[3], match[2], match[1]);
   return null;
 }
 
@@ -114,6 +126,9 @@ function moneyKey(value) {
 function rowsFromCsv(content, categories, selectedType) {
   const data = parseCsv(content);
   if (data.length < 2) throw new AppError("O arquivo precisa ter cabeçalho e ao menos um lançamento", 400, "IMPORT_FILE_EMPTY");
+  if (data.length - 1 > MAX_IMPORT_ROWS) {
+    throw new AppError(`O arquivo possui mais de ${MAX_IMPORT_ROWS} lançamentos. Divida-o em arquivos menores para manter a confirmação segura e atômica.`, 400, "IMPORT_TOO_MANY_ROWS");
+  }
   const headers = data[0].map(cleanHeader);
   const dateIndex = columnIndex(headers, columnAliases.date);
   const descriptionIndex = columnIndex(headers, columnAliases.description);
@@ -123,24 +138,34 @@ function rowsFromCsv(content, categories, selectedType) {
   if (dateIndex < 0 || descriptionIndex < 0 || (amountIndex < 0 && debitIndex < 0 && creditIndex < 0)) {
     throw new AppError("Não reconhecemos as colunas. O CSV deve ter Data, Descrição e Valor (ou Débito/Crédito)", 400, "IMPORT_COLUMNS_NOT_RECOGNIZED");
   }
-  const invalidRows = [];
   const rows = data.slice(1).map((cells, index) => {
     const date = parseDate(cells[dateIndex]);
-    const description = String(cells[descriptionIndex] || "").trim().replace(/\s+/g, " ").slice(0, 180);
+    const description = String(cells[descriptionIndex] || "").trim().replace(/\s+/g, " ");
     const amount = amountIndex >= 0 ? parseAmount(cells[amountIndex]) : (parseAmount(cells[debitIndex]) || parseAmount(cells[creditIndex]));
-    if (!date || !description || !amount) {
-      invalidRows.push(index + 2);
-      return null;
-    }
     const parsedType = debitIndex >= 0 && creditIndex >= 0
-      ? (String(cells[debitIndex] || "").trim() ? "EXPENSE" : "INCOME")
-      : amount.type;
-    const type = selectedType || parsedType;
+      ? (String(cells[debitIndex] || "").trim() ? "EXPENSE" : (String(cells[creditIndex] || "").trim() ? "INCOME" : null))
+      : amount?.type;
+    const type = selectedType || parsedType || "EXPENSE";
     const category = findCategory(categories, type, description);
-    return { rowNumber: index + 2, date, description, amount: amount.amount, type, categoryId: category?.id || null, categoryName: category?.name || "Sem categoria" };
-  }).filter(Boolean);
-  if (!rows.length) throw new AppError("Não encontramos lançamentos válidos neste arquivo", 400, "IMPORT_ROWS_NOT_RECOGNIZED");
-  return { rows, invalidRows };
+    const issues = [];
+    if (!date) issues.push("Data inválida");
+    if (description.length < 2) issues.push("Descrição ausente");
+    if (description.length > 180) issues.push("Descrição com mais de 180 caracteres");
+    if (!amount) issues.push("Valor inválido ou zerado");
+    return {
+      rowNumber: index + 2,
+      importKey: randomUUID(),
+      date: date || "",
+      description,
+      amount: amount?.amount || "",
+      type,
+      categoryId: category?.id || null,
+      categoryName: category?.name || "Sem categoria",
+      valid: issues.length === 0,
+      issues,
+    };
+  });
+  return { rows, invalidRows: rows.filter((row) => !row.valid).map((row) => ({ rowNumber: row.rowNumber, issues: row.issues })) };
 }
 
 async function activeAccount(userId, accountId) {
@@ -166,26 +191,51 @@ async function activeCreditCard(db, userId, creditCardId) {
 export async function previewCsvImport(userId, data) {
   const { account, categories } = await importContext(userId, data.accountId);
   const parsed = rowsFromCsv(data.content, categories, data.type);
-  const dates = parsed.rows.map((row) => row.date).sort();
-  const existing = await prisma.transaction.findMany({
-    where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
+  const dates = parsed.rows.filter((row) => row.valid).map((row) => row.date).sort();
+  const existing = dates.length ? await prisma.transaction.findMany({
+    where: {
+      userId,
+      accountId: account.id,
+      status: { not: "CANCELLED" },
+      date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) },
+    },
     select: { date: true, type: true, amount: true, description: true },
-  });
+  }) : [];
   const seen = new Set();
   const rows = parsed.rows.map((row) => {
+    if (!row.valid) return { ...row, duplicate: false, duplicateReason: null };
     const fingerprint = `${row.date}|${row.type}|${row.amount}|${normalized(row.description)}`;
-    const duplicate = seen.has(fingerprint) || existing.some((transaction) => isSameTransaction(transaction, row));
+    const repeatedInFile = seen.has(fingerprint);
+    const alreadyExists = existing.some((transaction) => isSameTransaction(transaction, row));
     seen.add(fingerprint);
-    return { ...row, duplicate };
+    return {
+      ...row,
+      duplicate: repeatedInFile || alreadyExists,
+      duplicateReason: repeatedInFile ? "Linha repetida neste arquivo" : (alreadyExists ? "Lançamento semelhante já existe" : null),
+    };
   });
-  return { account: { id: account.id, name: account.name }, rows, invalidRows: parsed.invalidRows };
+  const suggestedRows = rows.filter((row) => row.valid && !row.duplicate);
+  const income = suggestedRows.filter((row) => row.type === "INCOME").reduce((total, row) => total.plus(row.amount), new Prisma.Decimal(0));
+  const expense = suggestedRows.filter((row) => row.type === "EXPENSE").reduce((total, row) => total.plus(row.amount), new Prisma.Decimal(0));
+  const projectedBalance = new Prisma.Decimal(account.currentBalance).plus(income).minus(expense);
+  return {
+    importId: randomUUID(),
+    account: { id: account.id, name: account.name, currentBalance: account.currentBalance.toString() },
+    rows,
+    invalidRows: parsed.invalidRows,
+    summary: {
+      currentBalance: account.currentBalance.toString(),
+      income: income.toString(),
+      expense: expense.toString(),
+      projectedBalance: projectedBalance.toString(),
+    },
+  };
 }
 
 export async function commitCsvImport(userId, data) {
   const { account, categories } = await importContext(userId, data.accountId);
   const categoryMap = new Map(categories.map((category) => [category.id, category]));
-  const requested = data.rows.filter((row) => !row.duplicate);
-  if (!requested.length) return { imported: 0, skipped: data.rows.length };
+  const requested = data.rows;
   const isCreditCardImport = data.paymentMethod === "CREDIT_CARD";
   if (isCreditCardImport && requested.some((row) => row.type !== "EXPENSE")) {
     throw new AppError("Somente despesas podem ser importadas como compra no cartão de crédito", 400, "CARD_IMPORT_EXPENSE_ONLY");
@@ -194,28 +244,53 @@ export async function commitCsvImport(userId, data) {
   try {
     return await prisma.$transaction(async (db) => {
       if (isCreditCardImport) await activeCreditCard(db, userId, data.creditCardId);
-      const existing = await db.transaction.findMany({
-        where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
-        select: { date: true, type: true, amount: true, description: true },
-      });
+      const [existing, previouslyImported] = await Promise.all([
+        db.transaction.findMany({
+          where: { userId, accountId: account.id, status: { not: "CANCELLED" }, date: { gte: new Date(`${dates[0]}T00:00:00.000Z`), lte: new Date(`${dates.at(-1)}T00:00:00.000Z`) } },
+          select: { date: true, type: true, amount: true, description: true },
+        }),
+        db.transaction.findMany({
+          where: { userId, importId: data.importId, importRowKey: { in: requested.map((row) => row.importKey) } },
+          select: { importRowKey: true },
+        }),
+      ]);
+      const importedKeys = new Set(previouslyImported.map((row) => row.importRowKey));
       const seen = new Set();
       const records = [];
-      let skipped = data.rows.length - requested.length;
+      let duplicates = 0;
 
       for (const row of requested) {
+        if (importedKeys.has(row.importKey)) {
+          duplicates += 1;
+          continue;
+        }
         const category = categoryMap.get(row.categoryId);
         if (!category || category.type !== row.type) throw new AppError("Uma categoria da importação não é válida", 400, "IMPORT_CATEGORY_INVALID");
         const fingerprint = `${row.date}|${row.type}|${row.amount}|${normalized(row.description)}`;
-        if (seen.has(fingerprint) || existing.some((transaction) => isSameTransaction(transaction, row))) { skipped += 1; continue; }
+        const likelyDuplicate = seen.has(fingerprint) || existing.some((transaction) => isSameTransaction(transaction, row));
+        if (likelyDuplicate && !row.allowDuplicate) {
+          duplicates += 1;
+          seen.add(fingerprint);
+          continue;
+        }
         seen.add(fingerprint);
         const date = new Date(`${row.date}T00:00:00.000Z`);
         records.push({
           userId, accountId: account.id, categoryId: category.id, type: row.type, description: row.description,
           amount: row.amount, date, status: "COMPLETED", paymentMethod: "OTHER", settledAt: date, notes: "Importado de extrato CSV",
+          importId: data.importId, importRowKey: row.importKey,
         });
       }
 
-      if (!records.length) return { imported: 0, skipped };
+      const result = (imported, balanceAfter) => ({
+        imported,
+        ignored: data.ignoredCount,
+        duplicates,
+        rejected: 0,
+        skipped: data.ignoredCount + duplicates,
+        balanceAfter,
+      });
+      if (!records.length) return result(0, account.currentBalance.toString());
 
       if (isCreditCardImport) {
         for (const record of records) {
@@ -235,7 +310,7 @@ export async function commitCsvImport(userId, data) {
             settledAt: null,
           } });
         }
-        return { imported: records.length, skipped };
+        return result(records.length, account.currentBalance.toString());
       }
 
       // One insert and one balance adjustment prevent imports from timing out
@@ -245,15 +320,16 @@ export async function commitCsvImport(userId, data) {
         (total, row) => row.type === "INCOME" ? total.plus(row.amount) : total.minus(row.amount),
         new Prisma.Decimal(0),
       );
-      await db.account.update({
+      const updatedAccount = await db.account.update({
         where: { id: account.id },
         data: {
           currentBalance: netAmount.isNegative()
             ? { decrement: netAmount.abs().toString() }
             : { increment: netAmount.toString() },
         },
+        select: { currentBalance: true },
       });
-      return { imported: records.length, skipped };
+      return result(records.length, updatedAccount.currentBalance.toString());
     }, { maxWait: 5_000, timeout: isCreditCardImport ? 30_000 : 10_000 });
   } catch (error) {
     if (error instanceof AppError) throw error;

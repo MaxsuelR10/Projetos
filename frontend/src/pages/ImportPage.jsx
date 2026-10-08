@@ -9,7 +9,6 @@ import { getApiError } from '../utils/get-api-error.js'
 import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 import { useToast } from '../hooks/useToast.js'
 
-const IMPORT_BATCH_SIZE = 500
 const paymentMethods = [
   ['OTHER', 'Outro'],
   ['PIX', 'PIX'],
@@ -29,6 +28,15 @@ function normalizeAmount(value) {
   const amount = Number(normalized)
   return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : input
 }
+function isRowReady(row) {
+  const amount = normalizeAmount(row.amount)
+  return /^\d{4}-\d{2}-\d{2}$/.test(row.date)
+    && row.description.trim().length >= 2
+    && row.description.trim().length <= 180
+    && /^\d{1,15}(?:\.\d{1,4})?$/.test(amount)
+    && Number(amount) > 0
+    && Boolean(row.categoryId)
+}
 
 export function ImportPage() {
   const toast = useToast()
@@ -36,12 +44,14 @@ export function ImportPage() {
   const [categories, setCategories] = useState([])
   const [cards, setCards] = useState([])
   const [accountId, setAccountId] = useState('')
-  const [importType, setImportType] = useState('EXPENSE')
+  const [importType, setImportType] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('OTHER')
   const [creditCardId, setCreditCardId] = useState('')
   const [fileName, setFileName] = useState('')
   const [rows, setRows] = useState([])
-  const [invalidRows, setInvalidRows] = useState([])
+  const [importId, setImportId] = useState('')
+  const [currentBalance, setCurrentBalance] = useState(0)
+  const [result, setResult] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isReading, setIsReading] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -59,11 +69,13 @@ export function ImportPage() {
       .finally(() => setIsLoading(false))
   }, [])
 
-  const selectedRows = rows.filter((row) => row.selected && !row.duplicate)
+  const selectedRows = rows.filter((row) => row.selected)
   const totals = useMemo(() => selectedRows.reduce((accumulator, row) => ({
     income: accumulator.income + (row.type === 'INCOME' ? Number(row.amount) : 0),
     expense: accumulator.expense + (row.type === 'EXPENSE' ? Number(row.amount) : 0),
   }), { income: 0, expense: 0 }), [selectedRows])
+  const projectedBalance = paymentMethod === 'CREDIT_CARD' ? Number(currentBalance) : Number(currentBalance) + totals.income - totals.expense
+  const ignoredCount = rows.length - selectedRows.length
 
   function showError(message) {
     setError(message)
@@ -94,8 +106,10 @@ export function ImportPage() {
       const content = await file.text()
       const preview = await importService.previewCsv(accountId, content, importType)
       setFileName(file.name)
-      setInvalidRows(preview.invalidRows)
-      setRows(preview.rows.map((row) => ({ ...row, selected: !row.duplicate })))
+      setImportId(preview.importId)
+      setCurrentBalance(preview.account.currentBalance)
+      setResult(null)
+      setRows(preview.rows.map((row) => ({ ...row, selected: row.valid && !row.duplicate })))
       toast.success(`${preview.rows.length} lançamentos encontrados para conferência.`)
     } catch (requestError) {
       setRows([])
@@ -116,12 +130,22 @@ export function ImportPage() {
         next.categoryName = fallback?.name || 'Sem categoria'
       }
       if (field === 'categoryId') next.categoryName = categories.find((category) => category.id === value)?.name || 'Sem categoria'
+      next.valid = isRowReady(next)
+      next.issues = next.valid ? [] : ['Revise os campos obrigatórios antes de incluir']
+      if (!next.valid) next.selected = false
       return next
     }))
   }
 
   function formatRowAmount(index) {
-    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, amount: normalizeAmount(row.amount) } : row))
+    setRows((current) => current.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const next = { ...row, amount: normalizeAmount(row.amount) }
+      next.valid = isRowReady(next)
+      next.issues = next.valid ? [] : ['Revise os campos obrigatórios antes de incluir']
+      if (!next.valid) next.selected = false
+      return next
+    }))
   }
 
   async function commit() {
@@ -129,8 +153,8 @@ export function ImportPage() {
       showError('Selecione pelo menos um lançamento novo para importar.')
       return
     }
-    if (selectedRows.some((row) => !row.categoryId)) {
-      showError('Escolha uma categoria para todos os lançamentos selecionados.')
+    if (selectedRows.some((row) => !isRowReady(row))) {
+      showError('Revise data, descrição, categoria e valor de todos os lançamentos selecionados.')
       return
     }
     if (paymentMethod === 'CREDIT_CARD' && !creditCardId) {
@@ -141,26 +165,25 @@ export function ImportPage() {
       showError('Somente despesas podem ser importadas como compra no cartão de crédito.')
       return
     }
-    const invalidAmount = selectedRows.some((row) => !/^\d{1,15}(?:\.\d{1,4})?$/.test(normalizeAmount(row.amount)) || Number(normalizeAmount(row.amount)) <= 0)
-    if (invalidAmount) {
-      showError('Revise os valores: cada lançamento selecionado precisa ter um valor maior que zero.')
-      return
-    }
     setIsImporting(true)
     setError('')
     try {
-      const payload = selectedRows.map(({ date, description, amount, type, categoryId, duplicate }) => ({ date, description: description.trim(), amount: normalizeAmount(amount), type, categoryId, duplicate }))
-      let imported = 0
-      let skipped = 0
-      for (let start = 0; start < payload.length; start += IMPORT_BATCH_SIZE) {
-        const result = await importService.commitCsv(accountId, payload.slice(start, start + IMPORT_BATCH_SIZE), paymentMethod, creditCardId || null)
-        imported += result.imported
-        skipped += result.skipped
-      }
+      const payload = selectedRows.map(({ importKey, date, description, amount, type, categoryId, duplicate }) => ({
+        importKey,
+        date,
+        description: description.trim(),
+        amount: normalizeAmount(amount),
+        type,
+        categoryId,
+        allowDuplicate: Boolean(duplicate),
+      }))
+      const importResult = await importService.commitCsv(importId, accountId, payload, ignoredCount, paymentMethod, creditCardId || null)
       notifyFinancialDataChanged()
-      toast.success(`${imported} lançamento(s) importado(s).${skipped ? ` ${skipped} duplicado(s) foram ignorados.` : ''}`)
+      setResult(importResult)
+      setCurrentBalance(importResult.balanceAfter)
+      toast.success(`${importResult.imported} lançamento(s) importado(s) com segurança.`)
       setRows([])
-      setInvalidRows([])
+      setImportId('')
       setFileName('')
     } catch (requestError) {
       showError(getApiError(requestError, 'Não foi possível concluir a importação.'))
@@ -183,6 +206,18 @@ export function ImportPage() {
       </section>
 
       {error ? <section className="import-error" role="alert" aria-live="assertive"><div><strong>Não foi possível concluir a operação</strong><p>{error}</p></div><button type="button" aria-label="Fechar aviso de erro" onClick={() => setError('')}>×</button></section> : null}
+      {result ? (
+        <section className="import-result" role="status">
+          <div><p className="eyebrow">Importação concluída</p><h2>{result.imported} lançamento(s) adicionado(s)</h2></div>
+          <div className="import-result-counts">
+            <span><strong>{result.imported}</strong> importados</span>
+            <span><strong>{result.ignored}</strong> ignorados</span>
+            <span><strong>{result.duplicates}</strong> duplicados</span>
+            <span><strong>{result.rejected}</strong> recusados</span>
+          </div>
+          <p>Saldo atual da conta: <strong>{formatCurrency(result.balanceAfter)}</strong></p>
+        </section>
+      ) : null}
 
       <section className="import-card">
         <div>
@@ -199,18 +234,19 @@ export function ImportPage() {
           </label>
           <label className="form-field">
             <span>Tipo dos lançamentos</span>
-            <small>Este tipo será aplicado a todos os lançamentos do arquivo.</small>
+            <small>Detecte pelo sinal do valor ou force um único tipo para todo o arquivo.</small>
             <select value={importType} onChange={(event) => {
               const nextType = event.target.value
               setImportType(nextType)
               setRows([])
               setFileName('')
-              if (nextType === 'INCOME') {
+              if (nextType !== 'EXPENSE') {
                 setPaymentMethod('OTHER')
                 setCreditCardId('')
               }
             }}>
               <option value="EXPENSE">Despesas</option>
+              <option value="">Detectar automaticamente</option>
               <option value="INCOME">Receitas</option>
             </select>
           </label>
@@ -241,20 +277,30 @@ export function ImportPage() {
       {rows.length > 0 ? (
         <section className="import-preview">
           <div className="section-heading">
-            <div><p className="eyebrow">2. Conferência</p><h2>{fileName}</h2><p>Itens já existentes são desmarcados automaticamente.</p></div>
-            <button className="primary-button" type="button" disabled={isImporting || selectedRows.length === 0} onClick={commit}>{isImporting ? 'Importando...' : `Importar ${selectedRows.length} lançamento(s)`}</button>
+            <div><p className="eyebrow">2. Conferência</p><h2>{fileName}</h2><p>Revise o impacto, corrija linhas e escolha exatamente o que deseja importar.</p></div>
+            <button className="primary-button" type="button" disabled={isImporting || selectedRows.length === 0} onClick={commit}>{isImporting ? 'Importando...' : `Confirmar ${selectedRows.length} lançamento(s)`}</button>
           </div>
-          <div className="import-summary"><span>{selectedRows.length} selecionado(s)</span><span className="income-text">+ {formatCurrency(totals.income)}</span><span className="expense-text">− {formatCurrency(totals.expense)}</span></div>
-          {invalidRows.length ? <p className="import-warning">As linhas {invalidRows.join(', ')} não puderam ser lidas e serão ignoradas.</p> : null}
+          <div className="import-impact-grid">
+            <article><span>Saldo atual</span><strong>{formatCurrency(currentBalance)}</strong></article>
+            <article><span>Entradas selecionadas</span><strong className="income-text">+ {formatCurrency(totals.income)}</strong></article>
+            <article><span>Saídas selecionadas</span><strong className="expense-text">− {formatCurrency(totals.expense)}</strong></article>
+            <article className={projectedBalance < 0 ? 'is-negative' : ''}><span>{paymentMethod === 'CREDIT_CARD' ? 'Saldo após importar no cartão' : 'Saldo estimado após importar'}</span><strong>{formatCurrency(projectedBalance)}</strong></article>
+          </div>
+          <div className="import-summary"><span>{selectedRows.length} selecionado(s)</span><span>{ignoredCount} ignorado(s)</span><span>{rows.filter((row) => row.duplicate).length} possível(is) duplicado(s)</span></div>
+          {rows.some((row) => !row.valid) ? <p className="import-warning">Linhas com problema continuam visíveis: corrija os campos indicados para poder incluí-las.</p> : null}
           <div className="import-table-wrap"><table className="import-table"><thead><tr><th>Importar</th><th>Data</th><th>Descrição</th><th>Tipo</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>
             {rows.map((row, index) => (
-              <tr className={row.duplicate ? 'is-duplicate' : ''} key={row.rowNumber}>
-                <td><input aria-label={`Selecionar ${row.description}`} type="checkbox" checked={row.selected} disabled={row.duplicate} onChange={(event) => updateRow(index, 'selected', event.target.checked)} /></td>
-                <td><input aria-label={`Data de ${row.description}`} type="date" value={row.date} disabled={row.duplicate} onChange={(event) => updateRow(index, 'date', event.target.value)} /></td>
-                <td><input aria-label="Descrição" type="text" value={row.description} maxLength="180" disabled={row.duplicate} onChange={(event) => updateRow(index, 'description', event.target.value)} />{row.duplicate ? <small className="duplicate-note">Já existe</small> : null}</td>
-                <td><select value={row.type} disabled={row.duplicate} onChange={(event) => updateRow(index, 'type', event.target.value)}><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></td>
-                <td><select value={row.categoryId || ''} disabled={row.duplicate} onChange={(event) => updateRow(index, 'categoryId', event.target.value)}><option value="">Selecione</option>{categories.filter((category) => category.type === row.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
-                <td className={row.type === 'INCOME' ? 'income-text' : 'expense-text'}><input aria-label={`Valor de ${row.description}`} type="text" inputMode="decimal" value={row.amount} disabled={row.duplicate} onChange={(event) => updateRow(index, 'amount', event.target.value)} onBlur={() => formatRowAmount(index)} /></td>
+              <tr className={[row.duplicate ? 'is-duplicate' : '', !row.valid ? 'is-invalid' : ''].filter(Boolean).join(' ')} key={row.importKey}>
+                <td><input aria-label={`Selecionar ${row.description || `linha ${row.rowNumber}`}`} type="checkbox" checked={row.selected} disabled={!isRowReady(row)} onChange={(event) => updateRow(index, 'selected', event.target.checked)} /></td>
+                <td><input aria-label={`Data de ${row.description || `linha ${row.rowNumber}`}`} type="date" value={row.date} onChange={(event) => updateRow(index, 'date', event.target.value)} /></td>
+                <td>
+                  <input aria-label="Descrição" type="text" value={row.description} maxLength="180" onChange={(event) => updateRow(index, 'description', event.target.value)} />
+                  {row.duplicate ? <small className="duplicate-note">{row.duplicateReason}. Marque para importar mesmo assim.</small> : null}
+                  {!row.valid ? <small className="invalid-note">{row.issues.join(' · ')}</small> : null}
+                </td>
+                <td><select value={row.type} onChange={(event) => updateRow(index, 'type', event.target.value)}><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></td>
+                <td><select value={row.categoryId || ''} onChange={(event) => updateRow(index, 'categoryId', event.target.value)}><option value="">Selecione</option>{categories.filter((category) => category.type === row.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
+                <td className={row.type === 'INCOME' ? 'income-text' : 'expense-text'}><input aria-label={`Valor de ${row.description || `linha ${row.rowNumber}`}`} type="text" inputMode="decimal" value={row.amount} onChange={(event) => updateRow(index, 'amount', event.target.value)} onBlur={() => formatRowAmount(index)} /></td>
               </tr>
             ))}
           </tbody></table></div>
