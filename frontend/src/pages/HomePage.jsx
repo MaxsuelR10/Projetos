@@ -33,6 +33,30 @@ function formatReferencePeriod(startDate, endDate) {
   return `${formatDate(startDate)} até ${formatDate(endDate)}`;
 }
 
+function addDays(value, amount) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatAgendaDate(value) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+const agendaTypeLabels = {
+  TRANSACTION: "Lançamento",
+  INVOICE: "Fatura",
+  RECURRENCE: "Recorrência",
+  SUBSCRIPTION: "Assinatura",
+  REMINDER: "Lembrete",
+  GOAL: "Meta",
+  BUDGET: "Orçamento",
+};
+
 function pointOnCircle(percentage, radius) {
   const angle = ((percentage / 100) * 360 - 90) * (Math.PI / 180);
   return {
@@ -72,6 +96,7 @@ export function HomePage() {
   const [expenseTo, setExpenseTo] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
   const [chartMonths, setChartMonths] = useState(6);
   const [activeChart, setActiveChart] = useState("anatomy");
+  const [agendaRange, setAgendaRange] = useState("7");
   const [cardId, setCardId] = useState("");
   const [cards, setCards] = useState([]);
   const [cardsError, setCardsError] = useState("");
@@ -111,6 +136,22 @@ export function HomePage() {
   }, [loadDashboard]);
 
   const data = state.data;
+  const agendaItems = data?.agenda?.items ?? [];
+  const agendaCutoff = data?.agenda?.today
+    ? agendaRange === "today"
+      ? data.agenda.today
+      : addDays(data.agenda.today, Number(agendaRange))
+    : null;
+  const visibleAgenda = agendaCutoff
+    ? agendaItems.filter((item) => item.dueDate <= agendaCutoff)
+    : [];
+  const onboardingSteps = data ? [
+    { label: "Criar sua primeira conta", done: data.onboarding.hasAccount, to: "/contas" },
+    { label: "Informar o saldo inicial", done: data.onboarding.hasInitialBalance, to: "/contas" },
+    { label: "Registrar o primeiro gasto ou receita", done: data.onboarding.hasMovement, to: "/movimentacoes" },
+    { label: "Cadastrar um cartão, se usar", done: data.onboarding.hasCard, optional: true, to: "/cartoes" },
+  ] : [];
+  const essentialOnboardingComplete = data?.onboarding?.hasAccount && data?.onboarding?.hasMovement;
   const max = data
     ? Math.max(
         ...data.monthlySeries.flatMap((item) => [
@@ -212,105 +253,131 @@ export function HomePage() {
 
       {data ? (
         <>
-          {/* Saldo real e resultado em regime de caixa */}
-          <section className="overview-grid">
-            <article className="overview-card overview-card-primary">
-              <span>Saldo disponível</span>
-              <strong>
-                {formatCurrency(data.summary.currentBalance, user.currency)}
-              </strong>
-              <small>
-                Após compromissos vencidos: {formatCurrency(data.summary.projectedBalance, user.currency)}
-              </small>
-            </article>
+          {!essentialOnboardingComplete ? (
+            <section className="onboarding-card" aria-labelledby="onboarding-title">
+              <div className="onboarding-heading">
+                <div>
+                  <p className="eyebrow">Primeiros passos</p>
+                  <h2 id="onboarding-title">Deixe sua visão financeira pronta.</h2>
+                </div>
+                <strong>{onboardingSteps.filter((step) => step.done).length}/4</strong>
+              </div>
+              <div className="onboarding-progress" aria-hidden="true">
+                <i style={{ width: `${onboardingSteps.filter((step) => step.done).length * 25}%` }} />
+              </div>
+              <div className="onboarding-steps">
+                {onboardingSteps.map((step) => (
+                  <Link className={step.done ? "is-done" : ""} key={step.label} to={step.to}>
+                    <span aria-hidden="true">{step.done ? "✓" : "○"}</span>
+                    <strong>{step.label}</strong>
+                    {step.optional ? <small>Opcional</small> : null}
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
-            <article className="overview-card">
-              <span>{cardId ? "Impacto do cartão no período · caixa" : "Resultado do período · caixa"}</span>
-              <strong
-                className={
-                  Number(data.summary.monthlyResult) >= 0
-                    ? "income-text"
-                    : "expense-text"
-                }
-              >
-                {Number(data.summary.monthlyResult) >= 0 ? "+" : ""}
-                {formatCurrency(data.summary.monthlyResult, user.currency)}
-              </strong>
-              <small>
-                {cardId
-                  ? "Pagamentos do cartão no período"
-                  : Number(data.summary.monthlyResult) >= 0
-                  ? "Recebimentos menos pagamentos"
-                  : "Pagamentos superaram recebimentos"}
-              </small>
-            </article>
+          <section className="financial-summary" aria-labelledby="financial-summary-title">
+            <div className="section-heading dashboard-section-heading">
+              <div>
+                <p className="eyebrow">Sua posição agora</p>
+                <h2 id="financial-summary-title">Dinheiro disponível e compromissos</h2>
+                <p>O caixa mostra o que já aconteceu; a projeção considera o que vence nos próximos 30 dias.</p>
+              </div>
+            </div>
+            <div className="summary-card-grid">
+              <Link className="summary-card summary-card-primary" to="/contas">
+                <span>Saldo atual em contas</span>
+                <strong>{formatCurrency(data.summary.currentBalance, user.currency)}</strong>
+                <small>Ver contas e saldos →</small>
+              </Link>
+              <Link className="summary-card" to="/movimentacoes">
+                <span>Gastos já pagos no período</span>
+                <strong className="expense-text">{formatCurrency(data.summary.paidExpenses, user.currency)}</strong>
+                <small>Ver lançamentos concluídos →</small>
+              </Link>
+              <a className={`summary-card ${Number(data.summary.futureCommitments) > 0 ? "summary-card-warning" : ""}`} href="#agenda-financeira">
+                <span>Compromissos dos próximos 30 dias</span>
+                <strong>{formatCurrency(data.summary.futureCommitments, user.currency)}</strong>
+                <small>Ver exatamente o que vence →</small>
+              </a>
+              <a className={`summary-card ${Number(data.summary.freeBalanceProjected) < 0 ? "summary-card-danger" : ""}`} href="#agenda-financeira">
+                <span>Saldo livre projetado</span>
+                <strong className={Number(data.summary.freeBalanceProjected) < 0 ? "expense-text" : "income-text"}>
+                  {formatCurrency(data.summary.freeBalanceProjected, user.currency)}
+                </strong>
+                <small>Saldo atual menos compromissos →</small>
+              </a>
+            </div>
           </section>
 
-          {/* Quanto entrou -> Quanto saiu -> Quanto a pagar -> Quanto já pago -> Patrimônio */}
-          <section className="metric-grid metric-grid-5">
-            <article>
-              <span>Quanto entrou</span>
-              <strong className="income-text">
-                {formatCurrency(data.summary.monthlyIncome, user.currency)}
-              </strong>
-              <small>{cardId ? "Receitas gerais recebidas no período" : "Receitas recebidas no período"}</small>
-            </article>
-
-            <article>
-              <span>Quanto saiu</span>
-              <strong className="expense-text">
-                {formatCurrency(data.summary.monthlyExpense, user.currency)}
-              </strong>
-              <small>{cardId ? "Faturas deste cartão pagas no período" : "Despesas e faturas pagas no período"}</small>
-            </article>
-
-            <article
-              className={
-                Number(data.summary.overdueBills) > 0
-                  ? "metric-alert is-overdue"
-                  : Number(data.summary.pendingBills) > 0
-                    ? "metric-alert"
-                    : ""
-              }
-            >
-              <span>A pagar (Pendências)</span>
-              <strong
-                className={
-                  Number(data.summary.overdueBills) > 0
-                    ? "expense-text"
-                    : ""
-                }
-              >
-                {formatCurrency(data.summary.pendingBills, user.currency)}
-              </strong>
-              {Number(data.summary.overdueBills) > 0 ? (
-                <small className="expense-text">
-                  ⚠️ {formatCurrency(data.summary.overdueBills, user.currency)} em atraso
-                </small>
-              ) : (
-                <small>Aguardando pagamento</small>
-              )}
-            </article>
-
-            <article>
-              <span>Já pago no período</span>
-              <strong className="income-text">
-                {formatCurrency(data.summary.paidBills ?? "0", user.currency)}
-              </strong>
-              <small>{cardId ? "Faturas deste cartão quitadas" : "Contas e faturas quitadas"}</small>
-            </article>
-
-            <article>
+          <section className="metric-grid metric-grid-4">
+            <Link to="/movimentacoes">
+              <span>Recebido no período</span>
+              <strong className="income-text">{formatCurrency(data.summary.monthlyIncome, user.currency)}</strong>
+              <small>Entradas efetivamente recebidas</small>
+            </Link>
+            <Link to="/movimentacoes">
+              <span>Pago no período</span>
+              <strong className="expense-text">{formatCurrency(data.summary.monthlyExpense, user.currency)}</strong>
+              <small>Saídas efetivamente pagas</small>
+            </Link>
+            <a href="#agenda-financeira" className={Number(data.summary.overdueBills) > 0 ? "metric-alert is-overdue" : Number(data.summary.pendingBills) > 0 ? "metric-alert" : ""}>
+              <span>Pendências no período</span>
+              <strong>{formatCurrency(data.summary.pendingBills, user.currency)}</strong>
+              <small>{Number(data.summary.overdueBills) > 0 ? `${formatCurrency(data.summary.overdueBills, user.currency)} em atraso` : "Contas e faturas ainda abertas"}</small>
+            </a>
+            <Link to="/investimentos">
               <span>Patrimônio total</span>
-              <strong>
-                {formatCurrency(data.summary.netWorth, user.currency)}
-              </strong>
-              <small>
-                {Number(data.summary.investedTotal) > 0
-                  ? `Inclui ${formatCurrency(data.summary.investedTotal, user.currency)} investidos`
-                  : "Contas e investimentos"}
-              </small>
-            </article>
+              <strong>{formatCurrency(data.summary.netWorth, user.currency)}</strong>
+              <small>Contas e investimentos</small>
+            </Link>
+          </section>
+
+          {data.alerts.length ? (
+            <section className="alerts-panel" aria-labelledby="alerts-title">
+              <div className="section-heading dashboard-section-heading">
+                <div><p className="eyebrow">Atenção necessária</p><h2 id="alerts-title">Alertas úteis</h2></div>
+                <span>{data.alerts.length}</span>
+              </div>
+              <div className="alert-list">
+                {data.alerts.map((alert) => (
+                  <Link className={`financial-alert is-${alert.severity}`} key={alert.id} to={alert.path}>
+                    <i aria-hidden="true">{alert.severity === "danger" ? "!" : "↗"}</i>
+                    <span><strong>{alert.title}</strong><small>{alert.description}</small></span>
+                    <b aria-hidden="true">›</b>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="agenda-panel" id="agenda-financeira" aria-labelledby="agenda-title">
+            <div className="section-heading dashboard-section-heading agenda-heading">
+              <div>
+                <p className="eyebrow">Agenda financeira</p>
+                <h2 id="agenda-title">O que exige atenção agora</h2>
+                <p>Faturas, lançamentos, recorrências, lembretes, metas e orçamentos em um só lugar.</p>
+              </div>
+              <div className="agenda-tabs" role="tablist" aria-label="Período da agenda">
+                <button className={agendaRange === "today" ? "is-active" : ""} type="button" role="tab" aria-selected={agendaRange === "today"} onClick={() => setAgendaRange("today")}>Hoje</button>
+                <button className={agendaRange === "7" ? "is-active" : ""} type="button" role="tab" aria-selected={agendaRange === "7"} onClick={() => setAgendaRange("7")}>7 dias</button>
+                <button className={agendaRange === "30" ? "is-active" : ""} type="button" role="tab" aria-selected={agendaRange === "30"} onClick={() => setAgendaRange("30")}>30 dias</button>
+              </div>
+            </div>
+            {visibleAgenda.length ? (
+              <div className="agenda-list">
+                {visibleAgenda.map((item) => (
+                  <Link className={`agenda-item is-${item.status.toLowerCase()}`} key={item.id} to={item.path}>
+                    <time dateTime={item.dueDate}><strong>{formatAgendaDate(item.dueDate)}</strong><small>{item.status === "OVERDUE" ? "Atrasado" : item.status === "TODAY" ? "Hoje" : "Previsto"}</small></time>
+                    <span className="agenda-item-copy"><small>{agendaTypeLabels[item.type] ?? item.type}</small><strong>{item.title}</strong><em>{item.subtitle}</em></span>
+                    <span className="agenda-item-value">{item.amount !== null ? formatCurrency(item.amount, user.currency) : "Ver detalhe"}<b aria-hidden="true">›</b></span>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="agenda-empty"><span aria-hidden="true">✓</span><div><strong>Nada pendente neste período.</strong><small>Você está em dia com os compromissos cadastrados.</small></div></div>
+            )}
           </section>
 
           {activeChart === "comparison" ? (

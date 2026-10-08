@@ -97,7 +97,10 @@ describe.sequential("agregação financeira em regime de caixa do dashboard", ()
     expect(completedExpense.status).toBe(200);
 
     const afterPayment = await dashboard();
-    expect(afterPayment.summary).toMatchObject({ monthlyExpense: "850", pendingBills: "0", availableBalance: "1150", monthlyResult: "1150" });
+    const completedInsideSelectedPeriod = new Date().toISOString().slice(0, 7) === month;
+    const expectedExpense = completedInsideSelectedPeriod ? "850" : "800";
+    const expectedResult = completedInsideSelectedPeriod ? "1150" : "1200";
+    expect(afterPayment.summary).toMatchObject({ monthlyExpense: expectedExpense, pendingBills: "0", availableBalance: "1150", monthlyResult: expectedResult });
     expect(Number(afterPayment.summary.monthlyResult)).toBe(Number(afterPayment.summary.monthlyIncome) - Number(afterPayment.summary.monthlyExpense));
   });
 });
