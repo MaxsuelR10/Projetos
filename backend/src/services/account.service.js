@@ -204,6 +204,7 @@ const dependencyDefinitions = [
   { key: "goals", label: "metas", count: (db, accountId, userId) => db.financialGoal.count({ where: { accountId, userId } }) },
   { key: "investments", label: "investimentos", count: (db, accountId, userId) => db.investment.count({ where: { accountId, userId } }) },
   { key: "balanceHistory", label: "ajustes de saldo", count: (db, accountId, userId) => db.accountBalanceAdjustment.count({ where: { accountId, userId } }) },
+  { key: "categoryRules", label: "regras de categorização", count: (db, accountId, userId) => db.categoryRule.count({ where: { accountId, userId } }) },
 ];
 
 async function countAccountDependencies(db, userId, accountId) {

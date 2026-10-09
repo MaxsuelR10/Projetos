@@ -1573,3 +1573,63 @@ textarea { touch-action: manipulation; }
   .agenda-item { grid-template-columns: 3.7rem minmax(0, 1fr); }
   .agenda-item-value { grid-column: 2; justify-content: space-between; }
 }
+
+/* Regras de categorização e aprendizado na importação */
+.rule-page .page-heading.with-action, .import-page .page-heading.with-action { display: flex; }
+.heading-actions { display: flex; flex-wrap: wrap; gap: 0.65rem; }
+.heading-actions .inline-button { margin: 0; }
+.rule-editor { display: grid; gap: 1.2rem; }
+.rule-editor h2 { margin: 0; }
+.rule-editor p:not(.eyebrow) { color: var(--color-muted); line-height: 1.5; }
+.rule-form { display: grid; grid-template-columns: minmax(0, 1fr); }
+.rule-form .form-actions { grid-column: 1 / -1; display: flex; gap: 0.65rem; justify-content: flex-end; }
+.rules-section, .rule-list { display: grid; gap: 1rem; }
+.rules-section .segmented-control { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rule-card { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.1rem; border: 1px solid var(--color-line); border-radius: var(--radius-md); background: var(--color-surface); }
+.rule-card.is-inactive { background: #f6f8f6; }
+.rule-card-main { flex: 1 1 20rem; min-width: 0; overflow-wrap: anywhere; }
+.rule-card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; }
+.rule-card-main p { margin: 0.55rem 0; }
+.rule-card-main small { color: var(--color-muted); line-height: 1.5; }
+.rule-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.rule-actions button { min-height: 2.65rem; padding: 0.5rem 0.8rem; }
+.rule-card .status-pill { padding: 0.25rem 0.55rem; border-radius: 999px; background: #e8ece8; color: var(--color-muted); font-size: 0.75rem; font-weight: 800; }
+.rule-card .status-pill.is-active { color: var(--color-brand); background: var(--color-brand-soft); }
+.rule-card .rule-warning { padding: 0.55rem 0.7rem; border-radius: 0.55rem; color: #855e00; background: #fff4ce; font-size: 0.85rem; }
+.category-rule-cell { min-width: 15rem; }
+.category-suggestion { display: block; max-width: 17rem; margin-top: 0.4rem; color: var(--color-muted); line-height: 1.4; }
+.category-suggestion.is-rule { color: var(--color-brand); }
+.category-suggestion.is-conflict { color: #855e00; font-weight: 800; }
+.rule-inline-editor { margin-top: 0.55rem; max-width: 17rem; }
+.rule-save-toggle, .rule-inline-options label { display: flex; align-items: flex-start; gap: 0.45rem; font-size: 0.75rem; line-height: 1.45; }
+.rule-save-toggle input, .rule-inline-options input[type="checkbox"] { flex: 0 0 auto; margin-top: 0.15rem; }
+.rule-inline-options { display: grid; gap: 0.45rem; margin-top: 0.5rem; padding: 0.55rem; border: 1px solid var(--color-line); border-radius: 0.6rem; background: #f2f8f4; }
+.rule-inline-options input:not([type="checkbox"]), .rule-inline-options select { max-width: 100%; }
+@media (min-width: 42rem) {
+  .rule-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rule-pattern-field { grid-column: 1 / -1; }
+}
+@media (max-width: 41.99rem) {
+  .heading-actions { width: 100%; }
+  .heading-actions .inline-button { flex: 1 1 100%; }
+  .rules-section .section-heading { flex-wrap: wrap; gap: 0.8rem; }
+  .rules-section .segmented-control { width: 100%; }
+  .rule-actions { width: 100%; }
+  .rule-actions button { flex: 1; }
+  .import-table { min-width: 0; }
+  .import-table thead { display: none; }
+  .import-table tbody, .import-table tr, .import-table td { display: block; }
+  .import-table tr { padding: 0.5rem; border-bottom: 1px solid var(--color-line); }
+  .import-table tr:last-child { border-bottom: 0; }
+  .import-table td { border-bottom: 0; }
+  .import-table td::before { display: block; margin-bottom: 0.35rem; color: var(--color-muted); font-size: 0.72rem; font-weight: 800; }
+  .import-table td:nth-child(1)::before { content: 'Importar esta linha'; }
+  .import-table td:nth-child(2)::before { content: 'Data'; }
+  .import-table td:nth-child(3)::before { content: 'Descrição'; }
+  .import-table td:nth-child(4)::before { content: 'Tipo'; }
+  .import-table td:nth-child(5)::before { content: 'Categoria'; }
+  .import-table td:nth-child(6)::before { content: 'Valor'; }
+  .import-table select, .import-table input[type="date"], .import-table input[type="text"] { max-width: 100%; min-width: 0; }
+  .import-table td:nth-child(3) input, .category-rule-cell { min-width: 0; }
+  .category-suggestion, .rule-inline-editor { max-width: 100%; }
+}

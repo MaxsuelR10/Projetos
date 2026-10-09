@@ -36,7 +36,7 @@ function isRowReady(row) {
     && /^\d{1,15}(?:\.\d{1,4})?$/.test(amount)
     && Number(amount) > 0
     && Boolean(row.categoryId)
-    && (!row.saveRule || row.rulePattern?.trim().length >= 2)
+    && (!row.ruleConflict || row.categoryReviewed)
 }
 
 export function ImportPage() {
@@ -112,7 +112,8 @@ export function ImportPage() {
       setResult(null)
       setRows(preview.rows.map((row) => ({
         ...row,
-        selected: row.valid && !row.duplicate,
+        selected: row.valid && !row.duplicate && !row.ruleConflict,
+        categoryReviewed: !row.ruleConflict,
         categoryManuallyChanged: false,
         saveRule: false,
         ruleMatchType: 'EXACT',
@@ -143,6 +144,7 @@ export function ImportPage() {
       }
       next.categoryManuallyChanged = next.categoryId !== row.suggestedCategoryId
       if (field === 'categoryId') {
+        next.categoryReviewed = true
         next.categoryName = categories.find((category) => category.id === value)?.name || 'Sem categoria'
         next.categoryManuallyChanged = value !== row.suggestedCategoryId
       }
@@ -220,7 +222,7 @@ export function ImportPage() {
   if (isLoading) return <p className="loading-inline">Carregando importador...</p>
 
   return (
-    <div className="page-stack">
+    <div className="page-stack import-page">
       <section className="page-heading with-action">
         <div>
           <p className="eyebrow">Importação assistida</p>
@@ -342,6 +344,12 @@ export function ImportPage() {
                           ? 'Sugestão automática'
                           : 'Categoria padrão'}
                   </small>
+                  {row.ruleConflict ? (
+                    <label className="rule-save-toggle">
+                      <input type="checkbox" checked={row.categoryReviewed} onChange={(event) => updateRow(index, 'categoryReviewed', event.target.checked)} />
+                      <span>Revisei e confirmo esta categoria</span>
+                    </label>
+                  ) : null}
                   {row.categoryManuallyChanged ? (
                     <div className="rule-inline-editor">
                       <label className="rule-save-toggle">
@@ -350,7 +358,7 @@ export function ImportPage() {
                       </label>
                       {row.saveRule ? (
                         <div className="rule-inline-options">
-                          <input aria-label="Texto da nova regra" value={row.rulePattern} minLength="2" maxLength="180" onChange={(event) => updateRow(index, 'rulePattern', event.target.value)} />
+                          <input type="text" aria-label="Texto da nova regra" value={row.rulePattern} minLength="2" maxLength="180" onChange={(event) => updateRow(index, 'rulePattern', event.target.value)} />
                           <select aria-label="Forma de comparação da nova regra" value={row.ruleMatchType} onChange={(event) => updateRow(index, 'ruleMatchType', event.target.value)}>
                             <option value="EXACT">Descrição exata</option>
                             <option value="CONTAINS">Contém o texto</option>

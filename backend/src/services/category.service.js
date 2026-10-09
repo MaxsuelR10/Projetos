@@ -152,12 +152,13 @@ export async function deleteCategory(userId, id) {
   }
 
   return prisma.$transaction(async (transaction) => {
-    const [transactionCount, subcategoryCount] = await Promise.all([
+    const [transactionCount, subcategoryCount, ruleCount] = await Promise.all([
       transaction.transaction.count({ where: { categoryId: category.id, userId } }),
       transaction.subcategory.count({ where: { categoryId: category.id, userId } }),
+      transaction.categoryRule.count({ where: { categoryId: category.id, userId } }),
     ]);
 
-    if (transactionCount > 0 || subcategoryCount > 0) {
+    if (transactionCount > 0 || subcategoryCount > 0 || ruleCount > 0) {
       throw new AppError(
         "Esta categoria possui registros relacionados e só pode ser desativada",
         409,

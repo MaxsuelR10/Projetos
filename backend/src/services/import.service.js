@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
-import { normalizeName } from "../utils/normalize-name.js";
 import { normalizeCategoryRulePattern } from "../utils/normalize-category-rule.js";
 import { createPurchaseInTransaction } from "./card.service.js";
 
@@ -35,7 +34,7 @@ function cleanHeader(value) {
 }
 
 function normalized(value) {
-  return normalizeName(String(value || "")).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return normalizeCategoryRulePattern(value);
 }
 
 function parseCsv(content) {
@@ -114,8 +113,8 @@ function fallbackCategory(categories, type, description) {
 
 function ruleRank(rule) {
   return [
-    rule.accountId ? 1 : 0,
     rule.matchType === "EXACT" ? 1 : 0,
+    rule.accountId ? 1 : 0,
     rule.priority,
     rule.normalizedPattern.length,
   ];
@@ -164,7 +163,10 @@ function findCategory(categories, rules, accountId, type, description) {
     };
   }
 
-  const heuristic = categoryRules.some(([, expression]) => expression.test(normalizedDescription));
+  const heuristicRule = categoryRules.find(([, expression]) => expression.test(normalizedDescription));
+  const heuristic = heuristicRule && categories.some((category) => (
+    category.type === type && normalized(category.name) === normalized(heuristicRule[0])
+  ));
   return {
     category: fallbackCategory(categories, type, description),
     source: heuristic ? "HEURISTIC" : "FALLBACK",

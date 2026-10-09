@@ -4,6 +4,7 @@ import { accountService } from '../services/account.service.js'
 import { categoryRuleService } from '../services/category-rule.service.js'
 import { categoryService } from '../services/category.service.js'
 import { useToast } from '../hooks/useToast.js'
+import { useConfirm } from '../hooks/useConfirm.js'
 import { getApiError } from '../utils/get-api-error.js'
 
 const emptyForm = {
@@ -17,6 +18,7 @@ const emptyForm = {
 
 export function CategoryRulesPage() {
   const toast = useToast()
+  const requestConfirmation = useConfirm()
   const [rules, setRules] = useState([])
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
@@ -28,8 +30,6 @@ export function CategoryRulesPage() {
   const [error, setError] = useState('')
 
   async function load(nextStatus = status) {
-    setIsLoading(true)
-    setError('')
     try {
       const [loadedRules, loadedAccounts, loadedCategories] = await Promise.all([
         categoryRuleService.list(nextStatus),
@@ -47,9 +47,22 @@ export function CategoryRulesPage() {
   }
 
   useEffect(() => {
-    load(status)
-    // The status change is the only trigger; load is intentionally kept local.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false
+    Promise.all([
+      categoryRuleService.list(status),
+      accountService.list('all'),
+      categoryService.list('all'),
+    ]).then(([loadedRules, loadedAccounts, loadedCategories]) => {
+      if (cancelled) return
+      setRules(loadedRules)
+      setAccounts(loadedAccounts)
+      setCategories(loadedCategories)
+    }).catch((requestError) => {
+      if (!cancelled) setError(getApiError(requestError, 'Não foi possível carregar as regras.'))
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false)
+    })
+    return () => { cancelled = true }
   }, [status])
 
   const availableCategories = useMemo(
@@ -124,7 +137,13 @@ export function CategoryRulesPage() {
   }
 
   async function remove(rule) {
-    if (!window.confirm(`Excluir a regra “${rule.pattern}”? Esta ação não altera lançamentos já importados.`)) return
+    const confirmed = await requestConfirmation({
+      title: 'Excluir regra',
+      message: `Excluir a regra “${rule.pattern}”? Os lançamentos já importados permanecem como estão.`,
+      confirmLabel: 'Excluir regra',
+      destructive: true,
+    })
+    if (!confirmed) return
     try {
       await categoryRuleService.remove(rule.id)
       toast.success('Regra excluída.')
@@ -136,7 +155,7 @@ export function CategoryRulesPage() {
   }
 
   return (
-    <div className="page-stack">
+    <div className="page-stack rule-page">
       <section className="page-heading with-action">
         <div>
           <p className="eyebrow">Automação sob seu controle</p>
@@ -203,7 +222,7 @@ export function CategoryRulesPage() {
           <div><p className="eyebrow">Regras cadastradas</p><h2>Reconhecimentos automáticos</h2></div>
           <div className="segmented-control" aria-label="Filtrar regras">
             {[['all', 'Todas'], ['active', 'Ativas'], ['inactive', 'Pausadas']].map(([value, label]) => (
-              <button key={value} className={status === value ? 'active' : ''} type="button" onClick={() => setStatus(value)}>{label}</button>
+              <button key={value} className={status === value ? 'is-selected' : ''} aria-pressed={status === value} type="button" onClick={() => { if (status !== value) { setIsLoading(true); setError(''); setStatus(value) } }}>{label}</button>
             ))}
           </div>
         </div>

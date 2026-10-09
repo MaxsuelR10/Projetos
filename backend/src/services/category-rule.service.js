@@ -20,12 +20,13 @@ function conflictKey(rule) {
     rule.type,
     rule.matchType,
     rule.normalizedPattern,
+    rule.priority,
   ].join("|");
 }
 
 function serializeRules(rules) {
   const groups = new Map();
-  for (const rule of rules.filter((item) => item.isActive)) {
+  for (const rule of rules.filter((item) => item.isActive && !invalidReason(item))) {
     const key = conflictKey(rule);
     const group = groups.get(key) || [];
     group.push(rule);
@@ -120,7 +121,7 @@ export async function createCategoryRule(userId, data) {
     },
     include,
   });
-  return serializeRules([rule])[0];
+  return (await listCategoryRules(userId, { status: "all" })).find((item) => item.id === rule.id);
 }
 
 export async function updateCategoryRule(userId, id, data) {
@@ -130,7 +131,8 @@ export async function updateCategoryRule(userId, id, data) {
     categoryId: data.categoryId ?? current.categoryId,
     type: data.type ?? current.type,
   };
-  await validateLinks(userId, next);
+  const onlyPausing = data.isActive === false && Object.keys(data).length === 1;
+  if (!onlyPausing) await validateLinks(userId, next);
 
   const normalizedPattern = data.pattern === undefined
     ? undefined
@@ -152,7 +154,7 @@ export async function updateCategoryRule(userId, id, data) {
     },
     include,
   });
-  return serializeRules([rule])[0];
+  return (await listCategoryRules(userId, { status: "all" })).find((item) => item.id === rule.id);
 }
 
 export async function deleteCategoryRule(userId, id) {

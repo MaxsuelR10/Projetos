@@ -1,6 +1,6 @@
 # Próxima atualização — Regras inteligentes de categorização
 
-Status: preparada para o próximo ciclo.
+Status: concluída em 09/10/2026. Entrega e verificação em [update-3-category-rules.md](update-3-category-rules.md).
 
 ## Por que este é o próximo passo
 
