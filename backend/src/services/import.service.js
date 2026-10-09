@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { normalizeName } from "../utils/normalize-name.js";
+import { normalizeCategoryRulePattern } from "../utils/normalize-category-rule.js";
 import { createPurchaseInTransaction } from "./card.service.js";
 
 const MAX_IMPORT_ROWS = 500;
@@ -100,7 +101,7 @@ function parseAmount(value) {
   return { amount: Math.abs(amount).toFixed(2), type: negative || amount < 0 ? "EXPENSE" : "INCOME" };
 }
 
-function findCategory(categories, type, description) {
+function fallbackCategory(categories, type, description) {
   const normalizedDescription = normalized(description);
   const rule = categoryRules.find(([, expression]) => expression.test(normalizedDescription));
   const desiredName = rule?.[0] || "Outros";
@@ -108,6 +109,68 @@ function findCategory(categories, type, description) {
     || categories.find((category) => category.type === type && normalized(category.name) === "outros")
     || categories.find((category) => category.type === type)
     || null;
+}
+
+
+function ruleRank(rule) {
+  return [
+    rule.accountId ? 1 : 0,
+    rule.matchType === "EXACT" ? 1 : 0,
+    rule.priority,
+    rule.normalizedPattern.length,
+  ];
+}
+
+function compareRank(first, second) {
+  const firstRank = ruleRank(first);
+  const secondRank = ruleRank(second);
+  for (let index = 0; index < firstRank.length; index += 1) {
+    if (firstRank[index] !== secondRank[index]) return secondRank[index] - firstRank[index];
+  }
+  return first.id.localeCompare(second.id);
+}
+
+function sameRank(first, second) {
+  const secondRank = ruleRank(second);
+  return ruleRank(first).every((value, index) => value === secondRank[index]);
+}
+
+function findCategory(categories, rules, accountId, type, description) {
+  const normalizedDescription = normalized(description);
+  const candidates = rules
+    .filter((rule) => (
+      rule.type === type
+      && (!rule.accountId || rule.accountId === accountId)
+      && rule.category.isActive
+      && rule.category.type === type
+      && (!rule.account || rule.account.isActive)
+      && (rule.matchType === "EXACT"
+        ? normalizedDescription === rule.normalizedPattern
+        : normalizedDescription.includes(rule.normalizedPattern))
+    ))
+    .sort(compareRank);
+
+  const winner = candidates[0];
+  if (winner) {
+    const tied = candidates.filter((rule) => sameRank(rule, winner));
+    if (new Set(tied.map((rule) => rule.categoryId)).size === 1) {
+      return { category: winner.category, source: "RULE", rule: winner, conflict: null };
+    }
+    return {
+      category: fallbackCategory(categories, type, description),
+      source: "CONFLICT",
+      rule: null,
+      conflict: { count: tied.length, ruleIds: tied.map((rule) => rule.id) },
+    };
+  }
+
+  const heuristic = categoryRules.some(([, expression]) => expression.test(normalizedDescription));
+  return {
+    category: fallbackCategory(categories, type, description),
+    source: heuristic ? "HEURISTIC" : "FALLBACK",
+    rule: null,
+    conflict: null,
+  };
 }
 
 function isSameTransaction(existing, row) {
@@ -123,7 +186,7 @@ function moneyKey(value) {
   return trimmedDecimal ? `${integer}.${trimmedDecimal}` : integer;
 }
 
-function rowsFromCsv(content, categories, selectedType) {
+function rowsFromCsv(content, categories, rules, accountId, selectedType) {
   const data = parseCsv(content);
   if (data.length < 2) throw new AppError("O arquivo precisa ter cabeçalho e ao menos um lançamento", 400, "IMPORT_FILE_EMPTY");
   if (data.length - 1 > MAX_IMPORT_ROWS) {
@@ -146,7 +209,7 @@ function rowsFromCsv(content, categories, selectedType) {
       ? (String(cells[debitIndex] || "").trim() ? "EXPENSE" : (String(cells[creditIndex] || "").trim() ? "INCOME" : null))
       : amount?.type;
     const type = selectedType || parsedType || "EXPENSE";
-    const category = findCategory(categories, type, description);
+    const suggestion = findCategory(categories, rules, accountId, type, description);
     const issues = [];
     if (!date) issues.push("Data inválida");
     if (description.length < 2) issues.push("Descrição ausente");
@@ -159,8 +222,15 @@ function rowsFromCsv(content, categories, selectedType) {
       description,
       amount: amount?.amount || "",
       type,
-      categoryId: category?.id || null,
-      categoryName: category?.name || "Sem categoria",
+      categoryId: suggestion.category?.id || null,
+      categoryName: suggestion.category?.name || "Sem categoria",
+      suggestedCategoryId: suggestion.category?.id || null,
+      categorySuggestionSource: suggestion.source,
+      categoryRuleId: suggestion.rule?.id || null,
+      categoryRuleLabel: suggestion.rule
+        ? `${suggestion.rule.matchType === "EXACT" ? "Igual a" : "Contém"} “${suggestion.rule.pattern}”`
+        : null,
+      ruleConflict: suggestion.conflict,
       valid: issues.length === 0,
       issues,
     };
@@ -175,11 +245,22 @@ async function activeAccount(userId, accountId) {
 }
 
 async function importContext(userId, accountId) {
-  const [account, categories] = await Promise.all([
+  const [account, categories, rules] = await Promise.all([
     activeAccount(userId, accountId),
     prisma.category.findMany({ where: { userId, isActive: true }, select: { id: true, name: true, type: true } }),
+    prisma.categoryRule.findMany({
+      where: {
+        userId,
+        isActive: true,
+        OR: [{ accountId: null }, { accountId }],
+      },
+      include: {
+        category: { select: { id: true, name: true, type: true, isActive: true } },
+        account: { select: { id: true, isActive: true } },
+      },
+    }),
   ]);
-  return { account, categories };
+  return { account, categories, rules };
 }
 
 async function activeCreditCard(db, userId, creditCardId) {
@@ -189,8 +270,8 @@ async function activeCreditCard(db, userId, creditCardId) {
 }
 
 export async function previewCsvImport(userId, data) {
-  const { account, categories } = await importContext(userId, data.accountId);
-  const parsed = rowsFromCsv(data.content, categories, data.type);
+  const { account, categories, rules } = await importContext(userId, data.accountId);
+  const parsed = rowsFromCsv(data.content, categories, rules, account.id, data.type);
   const dates = parsed.rows.filter((row) => row.valid).map((row) => row.date).sort();
   const existing = dates.length ? await prisma.transaction.findMany({
     where: {
@@ -257,6 +338,7 @@ export async function commitCsvImport(userId, data) {
       const importedKeys = new Set(previouslyImported.map((row) => row.importRowKey));
       const seen = new Set();
       const records = [];
+      const ruleRecords = [];
       let duplicates = 0;
 
       for (const row of requested) {
@@ -280,17 +362,35 @@ export async function commitCsvImport(userId, data) {
           amount: row.amount, date, status: "COMPLETED", paymentMethod: "OTHER", settledAt: date, notes: "Importado de extrato CSV",
           importId: data.importId, importRowKey: row.importKey,
         });
+        if (row.saveRule) {
+          const normalizedPattern = normalizeCategoryRulePattern(row.rulePattern);
+          if (normalizedPattern.length < 2) {
+            throw new AppError("Uma regra da importação possui texto inválido", 400, "CATEGORY_RULE_PATTERN_INVALID");
+          }
+          ruleRecords.push({
+            userId,
+            accountId: row.ruleAccountScoped ? account.id : null,
+            categoryId: category.id,
+            type: row.type,
+            matchType: row.ruleMatchType,
+            pattern: row.rulePattern,
+            normalizedPattern,
+            sourceImportId: data.importId,
+            sourceImportRowKey: row.importKey,
+          });
+        }
       }
 
-      const result = (imported, balanceAfter) => ({
+      const result = (imported, balanceAfter, rulesCreated = 0) => ({
         imported,
+        rulesCreated,
         ignored: data.ignoredCount,
         duplicates,
         rejected: 0,
         skipped: data.ignoredCount + duplicates,
         balanceAfter,
       });
-      if (!records.length) return result(0, account.currentBalance.toString());
+      if (!records.length) return result(0, account.currentBalance.toString(), 0);
 
       if (isCreditCardImport) {
         for (const record of records) {
@@ -310,7 +410,9 @@ export async function commitCsvImport(userId, data) {
             settledAt: null,
           } });
         }
-        return result(records.length, account.currentBalance.toString());
+        const createdRules = ruleRecords.length
+          ? await db.categoryRule.createMany({ data: ruleRecords, skipDuplicates: true }) : { count: 0 };
+        return result(records.length, account.currentBalance.toString(), createdRules.count);
       }
 
       // One insert and one balance adjustment prevent imports from timing out
@@ -329,7 +431,9 @@ export async function commitCsvImport(userId, data) {
         },
         select: { currentBalance: true },
       });
-      return result(records.length, updatedAccount.currentBalance.toString());
+      const createdRules = ruleRecords.length
+        ? await db.categoryRule.createMany({ data: ruleRecords, skipDuplicates: true }) : { count: 0 };
+      return result(records.length, updatedAccount.currentBalance.toString(), createdRules.count);
     }, { maxWait: 5_000, timeout: isCreditCardImport ? 30_000 : 10_000 });
   } catch (error) {
     if (error instanceof AppError) throw error;

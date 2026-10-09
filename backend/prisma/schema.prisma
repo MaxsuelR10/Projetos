@@ -28,6 +28,11 @@ enum TransactionType {
   EXPENSE
 }
 
+enum CategoryRuleMatchType {
+  EXACT
+  CONTAINS
+}
+
 enum TransactionStatus {
   PENDING
   COMPLETED
@@ -145,6 +150,7 @@ model User {
   accounts                  Account[]
   accountBalanceAdjustments AccountBalanceAdjustment[]
   categories                Category[]
+  categoryRules             CategoryRule[]
   subcategories             Subcategory[]
   transactions              Transaction[]
   transfers                 Transfer[]
@@ -186,6 +192,7 @@ model Account {
   subscriptions         Subscription[]
   financialGoals        FinancialGoal[]
   investments           Investment[]
+  categoryRules         CategoryRule[]
   createdAt             DateTime                   @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
 
@@ -226,12 +233,37 @@ model Category {
   recurringTransactions RecurringTransaction[]
   subscriptions         Subscription[]
   budgets               Budget[]
+  categoryRules         CategoryRule[]
   createdAt             DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
 
   @@unique([userId, type, normalizedName])
   @@unique([id, userId])
   @@index([userId, type, isActive])
+}
+
+model CategoryRule {
+  id                 String                @id @default(uuid()) @db.Uuid
+  userId             String                @db.Uuid
+  accountId          String?               @db.Uuid
+  categoryId         String                @db.Uuid
+  type               TransactionType
+  matchType          CategoryRuleMatchType
+  pattern            String                @db.VarChar(180)
+  normalizedPattern  String                @db.VarChar(180)
+  priority           Int                   @default(0)
+  isActive           Boolean               @default(true)
+  sourceImportId     String?               @db.Uuid
+  sourceImportRowKey String?               @db.Uuid
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account            Account?              @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  category           Category              @relation(fields: [categoryId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, sourceImportId, sourceImportRowKey])
+  @@index([userId, isActive, type])
+  @@index([userId, accountId, matchType, normalizedPattern])
 }
 
 model Subcategory {

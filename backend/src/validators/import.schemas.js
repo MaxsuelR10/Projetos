@@ -9,6 +9,14 @@ const importRowSchema = z.object({
   type: transactionTypeSchema,
   categoryId: idSchema,
   allowDuplicate: z.boolean().default(false),
+  saveRule: z.boolean().default(false),
+  ruleMatchType: z.enum(["EXACT", "CONTAINS"]).default("EXACT"),
+  rulePattern: z.string().trim().min(2).max(180).optional(),
+  ruleAccountScoped: z.boolean().default(true),
+}).superRefine((row, context) => {
+  if (row.saveRule && !row.rulePattern) {
+    context.addIssue({ code: "custom", path: ["rulePattern"], message: "Informe o texto da regra" });
+  }
 });
 
 export const previewCsvImportSchema = z.object({

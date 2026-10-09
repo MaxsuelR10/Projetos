@@ -2,6 +2,7 @@ import { Router } from "express";
 import { accountRouter } from "./account.routes.js";
 import { authRouter } from "./auth.routes.js";
 import { categoryRouter } from "./category.routes.js";
+import { categoryRuleRouter } from "./category-rule.routes.js";
 import { cardRouter, invoiceRouter, purchaseRouter } from "./card.routes.js";
 import { transactionRouter, transferRouter } from "./transaction.routes.js";
 import { recurrenceRouter, subscriptionRouter } from "./recurrence.routes.js";
@@ -21,6 +22,7 @@ apiRouter.get("/health", (_request, response) => {
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/accounts", accountRouter);
 apiRouter.use("/categories", categoryRouter);
+apiRouter.use("/category-rules", categoryRuleRouter);
 apiRouter.use("/cards", cardRouter);
 apiRouter.use("/invoices", invoiceRouter);
 apiRouter.use("/card-purchases", purchaseRouter);

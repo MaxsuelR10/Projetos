@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthLayout } from '../layouts/AuthLayout.jsx'
 import { AccountsPage } from '../pages/AccountsPage.jsx'
 import { CategoriesPage } from '../pages/CategoriesPage.jsx'
+import { CategoryRulesPage } from '../pages/CategoryRulesPage.jsx'
 import { CardsPage } from '../pages/CardsPage.jsx'
 import { HomePage } from '../pages/HomePage.jsx'
 import { TransactionsPage } from '../pages/TransactionsPage.jsx'
@@ -32,6 +33,7 @@ export function AppRoutes() {
           <Route index element={<HomePage />} />
           <Route path="/contas" element={<AccountsPage />} />
           <Route path="/categorias" element={<CategoriesPage />} />
+          <Route path="/regras-categorias" element={<CategoryRulesPage />} />
           <Route path="/cartoes" element={<CardsPage />} />
           <Route path="/movimentacoes" element={<TransactionsPage />} />
           <Route path="/importar" element={<ImportPage />} />

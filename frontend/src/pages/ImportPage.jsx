@@ -36,6 +36,7 @@ function isRowReady(row) {
     && /^\d{1,15}(?:\.\d{1,4})?$/.test(amount)
     && Number(amount) > 0
     && Boolean(row.categoryId)
+    && (!row.saveRule || row.rulePattern?.trim().length >= 2)
 }
 
 export function ImportPage() {
@@ -109,7 +110,16 @@ export function ImportPage() {
       setImportId(preview.importId)
       setCurrentBalance(preview.account.currentBalance)
       setResult(null)
-      setRows(preview.rows.map((row) => ({ ...row, selected: row.valid && !row.duplicate })))
+      setRows(preview.rows.map((row) => ({
+        ...row,
+        selected: row.valid && !row.duplicate,
+        categoryManuallyChanged: false,
+        saveRule: false,
+        ruleMatchType: 'EXACT',
+        rulePattern: row.description,
+        rulePatternTouched: false,
+        ruleAccountScoped: true,
+      })))
       toast.success(`${preview.rows.length} lançamentos encontrados para conferência.`)
     } catch (requestError) {
       setRows([])
@@ -124,12 +134,19 @@ export function ImportPage() {
     setRows((current) => current.map((row, rowIndex) => {
       if (rowIndex !== index) return row
       const next = { ...row, [field]: value }
+      if (field === 'description' && !row.rulePatternTouched) next.rulePattern = value
+      if (field === 'rulePattern') next.rulePatternTouched = true
       if (field === 'type') {
         const fallback = categories.find((category) => category.type === value && category.name === 'Outros') || categories.find((category) => category.type === value)
         next.categoryId = fallback?.id || ''
         next.categoryName = fallback?.name || 'Sem categoria'
       }
-      if (field === 'categoryId') next.categoryName = categories.find((category) => category.id === value)?.name || 'Sem categoria'
+      next.categoryManuallyChanged = next.categoryId !== row.suggestedCategoryId
+      if (field === 'categoryId') {
+        next.categoryName = categories.find((category) => category.id === value)?.name || 'Sem categoria'
+        next.categoryManuallyChanged = value !== row.suggestedCategoryId
+      }
+      if (next.categoryManuallyChanged === false) next.saveRule = false
       next.valid = isRowReady(next)
       next.issues = next.valid ? [] : ['Revise os campos obrigatórios antes de incluir']
       if (!next.valid) next.selected = false
@@ -153,6 +170,10 @@ export function ImportPage() {
       showError('Selecione pelo menos um lançamento novo para importar.')
       return
     }
+    if (selectedRows.some((row) => row.saveRule && row.rulePattern.trim().length < 2)) {
+      showError('Informe ao menos 2 caracteres no texto de cada regra.')
+      return
+    }
     if (selectedRows.some((row) => !isRowReady(row))) {
       showError('Revise data, descrição, categoria e valor de todos os lançamentos selecionados.')
       return
@@ -168,14 +189,18 @@ export function ImportPage() {
     setIsImporting(true)
     setError('')
     try {
-      const payload = selectedRows.map(({ importKey, date, description, amount, type, categoryId, duplicate }) => ({
-        importKey,
-        date,
-        description: description.trim(),
-        amount: normalizeAmount(amount),
-        type,
-        categoryId,
-        allowDuplicate: Boolean(duplicate),
+      const payload = selectedRows.map((row) => ({
+        importKey: row.importKey,
+        date: row.date,
+        description: row.description.trim(),
+        amount: normalizeAmount(row.amount),
+        type: row.type,
+        categoryId: row.categoryId,
+        allowDuplicate: Boolean(row.duplicate),
+        saveRule: Boolean(row.saveRule),
+        ruleMatchType: row.ruleMatchType,
+        rulePattern: row.saveRule ? row.rulePattern.trim() : undefined,
+        ruleAccountScoped: Boolean(row.ruleAccountScoped),
       }))
       const importResult = await importService.commitCsv(importId, accountId, payload, ignoredCount, paymentMethod, creditCardId || null)
       notifyFinancialDataChanged()
@@ -202,7 +227,10 @@ export function ImportPage() {
           <h1>Importar extrato</h1>
           <p>Envie o CSV exportado pelo Nubank, Inter ou outro banco. Nada é lançado antes da sua conferência.</p>
         </div>
-        <Link className="secondary-button inline-button" to="/movimentacoes">Ver movimentações</Link>
+        <div className="heading-actions">
+          <Link className="secondary-button inline-button" to="/regras-categorias">Gerenciar regras</Link>
+          <Link className="secondary-button inline-button" to="/movimentacoes">Ver movimentações</Link>
+        </div>
       </section>
 
       {error ? <section className="import-error" role="alert" aria-live="assertive"><div><strong>Não foi possível concluir a operação</strong><p>{error}</p></div><button type="button" aria-label="Fechar aviso de erro" onClick={() => setError('')}>×</button></section> : null}
@@ -212,6 +240,7 @@ export function ImportPage() {
           <div className="import-result-counts">
             <span><strong>{result.imported}</strong> importados</span>
             <span><strong>{result.ignored}</strong> ignorados</span>
+            {result.rulesCreated ? <span><strong>{result.rulesCreated}</strong> regra(s) criada(s)</span> : null}
             <span><strong>{result.duplicates}</strong> duplicados</span>
             <span><strong>{result.rejected}</strong> recusados</span>
           </div>
@@ -299,7 +328,42 @@ export function ImportPage() {
                   {!row.valid ? <small className="invalid-note">{row.issues.join(' · ')}</small> : null}
                 </td>
                 <td><select value={row.type} onChange={(event) => updateRow(index, 'type', event.target.value)}><option value="EXPENSE">Despesa</option><option value="INCOME">Receita</option></select></td>
-                <td><select value={row.categoryId || ''} onChange={(event) => updateRow(index, 'categoryId', event.target.value)}><option value="">Selecione</option>{categories.filter((category) => category.type === row.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></td>
+                <td className="category-rule-cell">
+                  <select value={row.categoryId || ''} onChange={(event) => updateRow(index, 'categoryId', event.target.value)}>
+                    <option value="">Selecione</option>
+                    {categories.filter((category) => category.type === row.type).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                  <small className={`category-suggestion is-${row.categorySuggestionSource?.toLowerCase()}`}>
+                    {row.categorySuggestionSource === 'CONFLICT'
+                      ? `Conflito entre ${row.ruleConflict?.count || 2} regras; revise a categoria`
+                      : row.categorySuggestionSource === 'RULE'
+                        ? `Regra pessoal · ${row.categoryRuleLabel}`
+                        : row.categorySuggestionSource === 'HEURISTIC'
+                          ? 'Sugestão automática'
+                          : 'Categoria padrão'}
+                  </small>
+                  {row.categoryManuallyChanged ? (
+                    <div className="rule-inline-editor">
+                      <label className="rule-save-toggle">
+                        <input type="checkbox" checked={row.saveRule} onChange={(event) => updateRow(index, 'saveRule', event.target.checked)} />
+                        <span>Usar esta correção nas próximas vezes</span>
+                      </label>
+                      {row.saveRule ? (
+                        <div className="rule-inline-options">
+                          <input aria-label="Texto da nova regra" value={row.rulePattern} minLength="2" maxLength="180" onChange={(event) => updateRow(index, 'rulePattern', event.target.value)} />
+                          <select aria-label="Forma de comparação da nova regra" value={row.ruleMatchType} onChange={(event) => updateRow(index, 'ruleMatchType', event.target.value)}>
+                            <option value="EXACT">Descrição exata</option>
+                            <option value="CONTAINS">Contém o texto</option>
+                          </select>
+                          <label>
+                            <input type="checkbox" checked={row.ruleAccountScoped} onChange={(event) => updateRow(index, 'ruleAccountScoped', event.target.checked)} />
+                            <span>Somente nesta conta</span>
+                          </label>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </td>
                 <td className={row.type === 'INCOME' ? 'income-text' : 'expense-text'}><input aria-label={`Valor de ${row.description || `linha ${row.rowNumber}`}`} type="text" inputMode="decimal" value={row.amount} onChange={(event) => updateRow(index, 'amount', event.target.value)} onBlur={() => formatRowAmount(index)} /></td>
               </tr>
             ))}

@@ -14,6 +14,7 @@ const desktopNavigation = [
   { to: '/investimentos', label: 'Investimentos', symbol: '↗' },
   { to: '/assistente', label: 'Assistente', symbol: '✦' },
   { to: '/categorias', label: 'Categorias', symbol: '◇' },
+  { to: '/regras-categorias', label: 'Regras', symbol: '⌁' },
 ]
 
 const mobilePrimaryNav = [
@@ -31,6 +32,7 @@ const moreNavItems = [
   { to: '/desejos', label: 'Desejos & Lembretes', symbol: '♡', desc: 'Itens para comprar e pagamentos a lembrar' },
   { to: '/investimentos', label: 'Investimentos', symbol: '↗', desc: 'Patrimônio aplicado' },
   { to: '/categorias', label: 'Categorias', symbol: '◇', desc: 'Classificação de lançamentos' },
+  { to: '/regras-categorias', label: 'Regras de categorias', symbol: '⌁', desc: 'Automatizar novas importações' },
 ]
 
 export function AppLayout() {
