@@ -1,6 +1,8 @@
 # Próxima atualização — Conciliação mensal assistida
 
-Status: preparada para implementação após a atualização 3.
+Status: concluída em 09/10/2026 como atualização 4. Veja [a entrega e as validações](update-4-monthly-reconciliation.md).
+
+Próxima etapa sugerida: [mapeamento assistido de CSV e perfis por banco](next-update-csv-mapping.md).
 
 ## Objetivo
 

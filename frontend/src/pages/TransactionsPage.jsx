@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { EmptyState } from '../components/feedback/EmptyState.jsx'
 import { useAuth } from '../hooks/useAuth.js'
 import { accountService } from '../services/account.service.js'
@@ -77,16 +77,17 @@ export function TransactionsPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const requestConfirmation = useConfirm()
-  const [mode, setMode] = useState('movement')
+  const [entryParams] = useSearchParams()
+  const [mode, setMode] = useState(() => entryParams.get('mode') === 'transfer' ? 'transfer' : 'movement')
   const [movement, setMovement] = useState(initialMovement)
   const [transfer, setTransfer] = useState(initialTransfer)
   const [data, setData] = useState({ accounts: [], cards: [], categories: [], transactions: [], transfers: [] })
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [statusFilter, setStatusFilter] = useState('ALL')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(() => entryParams.get('q') || '')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(() => entryParams.get('q') || '')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [accountFilter, setAccountFilter] = useState('')
+  const [accountFilter, setAccountFilter] = useState(() => entryParams.get('accountId') || '')
   const [cardFilter, setCardFilter] = useState('')
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('')
   const [fromFilter, setFromFilter] = useState('')

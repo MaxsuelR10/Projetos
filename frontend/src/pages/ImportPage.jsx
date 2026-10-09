@@ -231,6 +231,7 @@ export function ImportPage() {
         </div>
         <div className="heading-actions">
           <Link className="secondary-button inline-button" to="/regras-categorias">Gerenciar regras</Link>
+          <Link className="secondary-button inline-button" to="/conciliacao">Conciliar mês</Link>
           <Link className="secondary-button inline-button" to="/movimentacoes">Ver movimentações</Link>
         </div>
       </section>

@@ -1633,3 +1633,40 @@ textarea { touch-action: manipulation; }
   .import-table td:nth-child(3) input, .category-rule-cell { min-width: 0; }
   .category-suggestion, .rule-inline-editor { max-width: 100%; }
 }
+
+/* Conciliação mensal */
+.reconciliation-page .page-heading.with-action { display: flex; }
+.reconciliation-controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+.reconciliation-controls .form-field { flex: 1 1 13rem; min-width: 0; }
+.reconciliation-status p { margin: 0.4rem 0; line-height: 1.55; color: var(--color-muted); }
+.reconciliation-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem; }
+.reconciliation-metrics button { display: grid; gap: 0.5rem; min-width: 0; padding: 1rem; border: 1px solid var(--color-line); border-radius: 1rem; text-align: left; background: var(--color-surface); color: var(--color-ink); cursor: pointer; }
+.reconciliation-metrics button.is-selected { border-color: var(--color-brand); background: var(--color-brand-soft); }
+.reconciliation-metrics span, .reconciliation-metrics small { color: var(--color-muted); font-size: 0.78rem; }
+.reconciliation-metrics strong { font-size: 1.1rem; overflow-wrap: anywhere; }
+.reconciliation-comparison, .reconciliation-movements, .reconciliation-history { display: grid; gap: 1rem; }
+.reconciliation-comparison h2, .reconciliation-movements h2, .reconciliation-history h2 { margin: 0; }
+.reconciliation-comparison p, .reconciliation-movements > p { line-height: 1.5; color: var(--color-muted); }
+.reconciliation-comparison form { display: grid; gap: 1rem; }
+.reconciliation-comparison textarea { width: 100%; min-height: 6rem; padding: 0.8rem; border: 1px solid var(--color-line); border-radius: 0.8rem; color: var(--color-ink); background: #fbfdfb; font: inherit; resize: vertical; }
+.reconciliation-difference { display: grid; gap: 0.4rem; padding: 1rem; border-radius: 0.9rem; background: var(--color-brand-soft); }
+.reconciliation-difference strong { font-size: 1.3rem; }
+.reconciliation-search { display: flex; gap: 1rem; align-items: end; flex-wrap: wrap; }
+.reconciliation-search .form-field { flex: 1 1 15rem; }
+.reconciliation-event-list { display: grid; gap: 0.5rem; }
+.reconciliation-event { display: flex; justify-content: space-between; align-items: center; gap: 0.8rem; width: 100%; padding: 0.9rem; border: 1px solid var(--color-line); border-radius: 0.85rem; text-align: left; color: var(--color-ink); background: var(--color-surface); cursor: pointer; }
+.reconciliation-event > div { min-width: 0; overflow-wrap: anywhere; }
+.reconciliation-event > strong { white-space: nowrap; }
+.reconciliation-event small { display: block; margin-top: 0.3rem; color: var(--color-muted); line-height: 1.4; }
+.reconciliation-event .duplicate-note { color: #855e00; }
+.reconciliation-detail { padding: 1rem; border: 1px solid var(--color-brand); border-radius: 0.9rem; background: var(--color-brand-soft); overflow-wrap: anywhere; }
+.reconciliation-detail h3 { margin: 0; }
+.reconciliation-history details { padding: 0.9rem; border: 1px solid var(--color-line); border-radius: 0.8rem; overflow-wrap: anywhere; }
+.reconciliation-history summary { cursor: pointer; font-weight: 750; line-height: 1.6; }
+.reconciliation-page .section-heading { flex-wrap: wrap; gap: 0.6rem; }
+@media (min-width: 64rem) { .reconciliation-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 41.99rem) {
+  .reconciliation-controls { display: grid; }
+  .reconciliation-event { align-items: start; flex-direction: column; }
+  .reconciliation-metrics strong { font-size: 1rem; }
+}

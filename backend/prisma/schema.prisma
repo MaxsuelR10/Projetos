@@ -151,6 +151,7 @@ model User {
   accountBalanceAdjustments AccountBalanceAdjustment[]
   categories                Category[]
   categoryRules             CategoryRule[]
+  reconciliations           AccountReconciliation[]
   subcategories             Subcategory[]
   transactions              Transaction[]
   transfers                 Transfer[]
@@ -193,6 +194,7 @@ model Account {
   financialGoals        FinancialGoal[]
   investments           Investment[]
   categoryRules         CategoryRule[]
+  reconciliations       AccountReconciliation[]
   createdAt             DateTime                   @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime                   @updatedAt @db.Timestamptz(3)
 
@@ -240,6 +242,26 @@ model Category {
   @@unique([userId, type, normalizedName])
   @@unique([id, userId])
   @@index([userId, type, isActive])
+}
+
+model AccountReconciliation {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  accountId      String   @db.Uuid
+  month          String   @db.VarChar(7)
+  requestId      String   @db.Uuid
+  snapshotHash   String   @db.VarChar(64)
+  bankBalance    Decimal  @db.Decimal(19, 4)
+  closingBalance Decimal  @db.Decimal(19, 4)
+  difference     Decimal  @db.Decimal(19, 4)
+  justification  String?  @db.VarChar(2000)
+  snapshot       Json
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  account        Account  @relation(fields: [accountId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([userId, requestId])
+  @@index([userId, accountId, month, createdAt])
 }
 
 model CategoryRule {

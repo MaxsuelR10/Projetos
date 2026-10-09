@@ -6,6 +6,7 @@ const desktopNavigation = [
   { to: '/', label: 'Início', symbol: '⌂', end: true },
   { to: '/movimentacoes', label: 'Movimentações', symbol: '↕' },
   { to: '/importar', label: 'Importar', symbol: '⇪' },
+  { to: '/conciliacao', label: 'Conciliação', symbol: '≋' },
   { to: '/contas', label: 'Contas', symbol: '◫' },
   { to: '/cartoes', label: 'Cartões', symbol: '▣' },
   { to: '/recorrencias', label: 'Recorrências', symbol: '↻' },
@@ -27,6 +28,7 @@ const mobilePrimaryNav = [
 const moreNavItems = [
   { to: '/assistente', label: 'Assistente financeiro', symbol: '✦', desc: 'Análises e simulações com seus dados' },
   { to: '/importar', label: 'Importar extrato', symbol: '⇪', desc: 'Anexar CSV do seu banco' },
+  { to: '/conciliacao', label: 'Conciliação mensal', symbol: '≋', desc: 'Comparar saldos e revisar o mês' },
   { to: '/recorrencias', label: 'Recorrências & Fixas', symbol: '↻', desc: 'Gastos e receitas programadas' },
   { to: '/planejamento', label: 'Metas Financeiras', symbol: '◎', desc: 'Objetivos e reservas' },
   { to: '/desejos', label: 'Desejos & Lembretes', symbol: '♡', desc: 'Itens para comprar e pagamentos a lembrar' },
