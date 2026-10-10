@@ -59,7 +59,7 @@ export const updatePurchaseSchema = z.object({
   body: z.object({ description: z.string().trim().min(2).max(180).optional(), merchant: optionalText(180), notes: optionalText(5000) }).strict().refine((data) => Object.keys(data).length > 0, "Informe ao menos um campo para atualizar"),
 });
 
-export const listInvoicesSchema = z.object({ params: z.object({ id: idSchema }) });
+export const listInvoicesSchema = z.object({ params: z.object({ id: idSchema }), query: z.object({ month: z.string().regex(/^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/).optional(), status: z.enum(["open", "all"]).default("open") }) });
 export const invoiceIdSchema = z.object({ params: z.object({ id: idSchema }) });
 export const payInvoiceSchema = z.object({
   params: z.object({ id: idSchema }),

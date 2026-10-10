@@ -4,15 +4,7 @@ import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import { normalizeCategoryRulePattern } from "../utils/normalize-category-rule.js";
 import { createPurchaseInTransaction } from "./card.service.js";
-
-const MAX_IMPORT_ROWS = 500;
-const columnAliases = {
-  date: ["data", "date", "data da transacao", "data transacao", "data do lancamento"],
-  description: ["descricao", "description", "titulo", "title", "lancamento", "historico", "estabelecimento", "transacao"],
-  amount: ["valor", "amount", "valor r", "valor r$", "valor (r$)"],
-  debit: ["debito", "debitos", "valor debito"],
-  credit: ["credito", "creditos", "valor credito"],
-};
+import { inspectCsv, parseCsv, suggestMapping, parseCsvDate, parseCsvMoney } from "../utils/csv-format.js";
 
 const categoryRules = [
   ["Mercado", /mercado|supermercado|atacadao|atacadão/],
@@ -29,76 +21,7 @@ const categoryRules = [
   ["Cashback", /cashback/],
 ];
 
-function cleanHeader(value) {
-  return normalized(String(value || "").replace(/[()]/g, " ").replace(/\$/g, " "));
-}
-
-function normalized(value) {
-  return normalizeCategoryRulePattern(value);
-}
-
-function parseCsv(content) {
-  const lines = String(content || "").replace(/^\uFEFF/, "");
-  const firstLine = lines.split(/\r?\n/).find((line) => line.trim()) || "";
-  const delimiter = [";", ",", "\t"].reduce((best, candidate) => (
-    firstLine.split(candidate).length > firstLine.split(best).length ? candidate : best
-  ), ";");
-  const rows = [];
-  let row = [];
-  let cell = "";
-  let quoted = false;
-  for (let index = 0; index < lines.length; index += 1) {
-    const char = lines[index];
-    if (char === '"') {
-      if (quoted && lines[index + 1] === '"') { cell += '"'; index += 1; } else quoted = !quoted;
-    } else if (char === delimiter && !quoted) { row.push(cell.trim()); cell = ""; }
-    else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && lines[index + 1] === "\n") index += 1;
-      row.push(cell.trim());
-      if (row.some(Boolean)) rows.push(row);
-      row = []; cell = "";
-    } else cell += char;
-  }
-  row.push(cell.trim());
-  if (row.some(Boolean)) rows.push(row);
-  return rows;
-}
-
-function columnIndex(headers, names) {
-  return headers.findIndex((header) => names.includes(header) || names.some((name) => header.includes(name)));
-}
-
-function validIsoDate(year, month, day) {
-  const candidate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-  if (
-    candidate.getUTCFullYear() !== Number(year)
-    || candidate.getUTCMonth() !== Number(month) - 1
-    || candidate.getUTCDate() !== Number(day)
-  ) return null;
-  return `${year}-${month}-${day}`;
-}
-
-function parseDate(value) {
-  const input = String(value || "").trim();
-  let match = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (match) return validIsoDate(match[1], match[2], match[3]);
-  match = input.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if (match) return validIsoDate(match[3], match[2], match[1]);
-  return null;
-}
-
-function parseAmount(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const negative = /^\s*-|\(.*\)$/.test(raw);
-  const numeric = raw.replace(/[^\d,.-]/g, "");
-  const normalized = numeric.includes(",")
-    ? numeric.replace(/\./g, "").replace(",", ".")
-    : numeric.replace(/,/g, "");
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount === 0) return null;
-  return { amount: Math.abs(amount).toFixed(2), type: negative || amount < 0 ? "EXPENSE" : "INCOME" };
-}
+function normalized(value) { return normalizeCategoryRulePattern(value); }
 
 function fallbackCategory(categories, type, description) {
   const normalizedDescription = normalized(description);
@@ -188,41 +111,50 @@ function moneyKey(value) {
   return trimmedDecimal ? `${integer}.${trimmedDecimal}` : integer;
 }
 
-function rowsFromCsv(content, categories, rules, accountId, selectedType) {
-  const data = parseCsv(content);
-  if (data.length < 2) throw new AppError("O arquivo precisa ter cabeçalho e ao menos um lançamento", 400, "IMPORT_FILE_EMPTY");
-  if (data.length - 1 > MAX_IMPORT_ROWS) {
-    throw new AppError(`O arquivo possui mais de ${MAX_IMPORT_ROWS} lançamentos. Divida-o em arquivos menores para manter a confirmação segura e atômica.`, 400, "IMPORT_TOO_MANY_ROWS");
-  }
-  const headers = data[0].map(cleanHeader);
-  const dateIndex = columnIndex(headers, columnAliases.date);
-  const descriptionIndex = columnIndex(headers, columnAliases.description);
-  const amountIndex = columnIndex(headers, columnAliases.amount);
-  const debitIndex = columnIndex(headers, columnAliases.debit);
-  const creditIndex = columnIndex(headers, columnAliases.credit);
-  if (dateIndex < 0 || descriptionIndex < 0 || (amountIndex < 0 && debitIndex < 0 && creditIndex < 0)) {
-    throw new AppError("Não reconhecemos as colunas. O CSV deve ter Data, Descrição e Valor (ou Débito/Crédito)", 400, "IMPORT_COLUMNS_NOT_RECOGNIZED");
+function rowsFromCsv(content, categories, rules, accountId, selectedType, mapping) {
+  const parsed = parseCsv(content, mapping?.delimiter);
+  const data = parsed.rows;
+  const options = mapping || { ...suggestMapping(data[0], parsed.delimiter), dateFormat: "DMY" };
+  // Legacy callers retain Brazilian slash dates; the mapping flow requires explicit ambiguous formats.
+  const dateIndex = options.date;
+  const descriptionIndex = options.description;
+  const amountIndex = options.amount;
+  const debitIndex = options.debit;
+  const creditIndex = options.credit;
+  const indices = [dateIndex, descriptionIndex, ...(options.amountMode === "SIGNED" ? [amountIndex] : [debitIndex, creditIndex].filter((value) => value !== null))];
+  if (indices.length < 3 || indices.some((value) => value === null || value >= data[0].length) || new Set(indices).size !== indices.length) {
+    throw new AppError("Escolha as colunas de data, descrição e valor no mapeamento", 400, "IMPORT_COLUMNS_NOT_RECOGNIZED");
   }
   const rows = data.slice(1).map((cells, index) => {
-    const date = parseDate(cells[dateIndex]);
+    const dateResult = parseCsvDate(cells[dateIndex], mapping ? options.dateFormat : (/^\d{4}-/.test(cells[dateIndex] || "") ? "ISO" : "DMY"));
+    const date = dateResult.date;
     const description = String(cells[descriptionIndex] || "").trim().replace(/\s+/g, " ");
-    const amount = amountIndex >= 0 ? parseAmount(cells[amountIndex]) : (parseAmount(cells[debitIndex]) || parseAmount(cells[creditIndex]));
-    const parsedType = debitIndex >= 0 && creditIndex >= 0
-      ? (String(cells[debitIndex] || "").trim() ? "EXPENSE" : (String(cells[creditIndex] || "").trim() ? "INCOME" : null))
-      : amount?.type;
+    let amount; let parsedType;
+    if (options.amountMode === "SIGNED") {
+      amount = parseCsvMoney(cells[amountIndex], options.decimalSeparator); parsedType = amount.type;
+    } else {
+      const debit = parseCsvMoney(cells[debitIndex], options.decimalSeparator);
+      const credit = parseCsvMoney(cells[creditIndex], options.decimalSeparator);
+      if (debit.error || credit.error) amount = { error: debit.error || credit.error };
+      else if (!debit.zero && !credit.zero) amount = { error: "Débito e crédito preenchidos na mesma linha: confira o extrato" };
+      else if (!debit.zero) { amount = debit; parsedType = "EXPENSE"; }
+      else { amount = credit; parsedType = "INCOME"; }
+    }
     const type = selectedType || parsedType || "EXPENSE";
     const suggestion = findCategory(categories, rules, accountId, type, description);
     const issues = [];
-    if (!date) issues.push("Data inválida");
+    if (!date) issues.push(dateResult.error || "Data inválida");
+    if (cells.length !== data[0].length) issues.push("A quantidade de colunas difere do cabeçalho");
     if (description.length < 2) issues.push("Descrição ausente");
     if (description.length > 180) issues.push("Descrição com mais de 180 caracteres");
-    if (!amount) issues.push("Valor inválido ou zerado");
+    if (amount.error) issues.push(amount.error);
+    if (!amount.amount || amount.zero) issues.push("Valor inválido ou zerado");
     return {
       rowNumber: index + 2,
       importKey: randomUUID(),
       date: date || "",
       description,
-      amount: amount?.amount || "",
+      amount: amount.error || amount.zero ? "" : (amount.amount || ""),
       type,
       categoryId: suggestion.category?.id || null,
       categoryName: suggestion.category?.name || "Sem categoria",
@@ -273,7 +205,15 @@ async function activeCreditCard(db, userId, creditCardId) {
 
 export async function previewCsvImport(userId, data) {
   const { account, categories, rules } = await importContext(userId, data.accountId);
-  const parsed = rowsFromCsv(data.content, categories, rules, account.id, data.type);
+  let mapping = data.mapping;
+  if (data.profileId) {
+    const profile = await prisma.csvImportProfile.findFirst({ where: { id: data.profileId, userId } });
+    if (!profile) throw new AppError("Perfil não encontrado", 404, "IMPORT_PROFILE_NOT_FOUND");
+    const inspected = inspectCsv(data.content, profile.mapping.delimiter);
+    if (JSON.stringify(inspected.headers) !== JSON.stringify(profile.headers)) throw new AppError("O cabeçalho mudou. Confira as colunas antes de usar este perfil.", 409, "IMPORT_PROFILE_HEADERS_CHANGED");
+    mapping = profile.mapping;
+  }
+  const parsed = rowsFromCsv(data.content, categories, rules, account.id, data.type, mapping);
   const dates = parsed.rows.filter((row) => row.valid).map((row) => row.date).sort();
   const existing = dates.length ? await prisma.transaction.findMany({
     where: {
@@ -315,6 +255,23 @@ export async function previewCsvImport(userId, data) {
   };
 }
 
+export async function inspectCsvImport(userId, data) {
+  await activeAccount(userId, data.accountId);
+  return inspectCsv(data.content, data.delimiter);
+}
+export async function listImportProfiles(userId) {
+  return prisma.csvImportProfile.findMany({ where: { userId }, orderBy: { name: "asc" }, select: { id: true, name: true, headers: true, mapping: true } });
+}
+export async function saveImportProfile(userId, data) {
+  const mappingColumns = [data.mapping.date, data.mapping.description, ...(data.mapping.amountMode === "SIGNED" ? [data.mapping.amount] : [data.mapping.debit, data.mapping.credit].filter((value) => value !== null))];
+  if (mappingColumns.some((index) => index >= data.headers.length)) throw new AppError("Coluna fora do cabeçalho", 400, "IMPORT_PROFILE_INVALID");
+  return prisma.csvImportProfile.upsert({ where: { userId_name: { userId, name: data.name } }, create: { userId, ...data }, update: data, select: { id: true, name: true, headers: true, mapping: true } });
+}
+export async function deleteImportProfile(userId, id) {
+  const result = await prisma.csvImportProfile.deleteMany({ where: { id, userId } });
+  if (!result.count) throw new AppError("Perfil não encontrado", 404, "IMPORT_PROFILE_NOT_FOUND");
+}
+
 export async function commitCsvImport(userId, data) {
   const { account, categories } = await importContext(userId, data.accountId);
   const categoryMap = new Map(categories.map((category) => [category.id, category]));
@@ -322,6 +279,9 @@ export async function commitCsvImport(userId, data) {
   const isCreditCardImport = data.paymentMethod === "CREDIT_CARD";
   if (isCreditCardImport && requested.some((row) => row.type !== "EXPENSE")) {
     throw new AppError("Somente despesas podem ser importadas como compra no cartão de crédito", 400, "CARD_IMPORT_EXPENSE_ONLY");
+  }
+  if (isCreditCardImport && requested.some((row) => !new Prisma.Decimal(row.amount).equals(new Prisma.Decimal(row.amount).toDecimalPlaces(2)))) {
+    throw new AppError("Compras no cartão devem ter no máximo duas casas decimais. Confira os valores antes de importar.", 400, "CARD_IMPORT_PRECISION");
   }
   const dates = requested.map((row) => row.date).sort();
   try {

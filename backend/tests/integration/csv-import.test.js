@@ -135,6 +135,10 @@ describe.sequential("importação de extrato CSV", () => {
     const invoices = await agent.get(`/api/cards/${cardId}/invoices`);
     expect(invoices.body.invoices[0]).toMatchObject({ referenceYear: 2026, referenceMonth: 9, totalAmount: "120" });
     expect(invoices.body.invoices[0].dueDate).toContain("2026-09-20");
+    const fractional = await agent.post("/api/imports/csv/commit").send({ accountId, importId: randomUUID(), paymentMethod: "CREDIT_CARD", creditCardId: cardId, rows: [{ ...rows[0], importKey: randomUUID(), amount: "0.1234", description: "Valor fracionário inválido" }] });
+    expect(fractional.status).toBe(400);
+    expect(fractional.body.code).toBe("CARD_IMPORT_PRECISION");
+    expect((await agent.get(`/api/cards/${cardId}/invoices`)).body.invoices[0].totalAmount).toBe("120");
 
     const transactions = await agent.get(`/api/transactions?creditCardId=${cardId}&q=Restaurante%20Nubank&limit=10`);
     const importedPurchase = transactions.body.transactions.find((item) => item.description === "Restaurante Nubank");

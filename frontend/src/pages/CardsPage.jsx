@@ -10,6 +10,7 @@ import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 import { useConfirm } from '../hooks/useConfirm.js'
 import { useToast } from '../hooks/useToast.js'
 import { FormDrawer } from '../components/feedback/FormDrawer.jsx'
+import { useSearchParams } from 'react-router-dom'
 
 const today = new Date().toISOString().slice(0, 10)
 const emptyCard = { name: '', institution: '', brand: '', type: 'CREDIT', creditLimit: '', closingDay: '25', dueDay: '5', color: '#263B71' }
@@ -19,6 +20,7 @@ function invoiceLabel(invoice) { return `${String(invoice.referenceMonth).padSta
 function formatDate(value) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(value)) }
 
 export function CardsPage() {
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const requestConfirmation = useConfirm()
   const toast = useToast()
@@ -27,6 +29,7 @@ export function CardsPage() {
   const [categories, setCategories] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [invoices, setInvoices] = useState([])
+  const [invoiceMonth, setInvoiceMonth] = useState(() => searchParams.get('month') || today.slice(0, 7))
   const [purchases, setPurchases] = useState([])
   const [cardForm, setCardForm] = useState(emptyCard)
   const [purchaseForm, setPurchaseForm] = useState(emptyPurchase)
@@ -39,12 +42,14 @@ export function CardsPage() {
   const [error, setError] = useState('')
 
   const selectedCard = cards.find((card) => card.id === selectedId)
+  const visibleInvoices = invoices.filter((invoice) => `${invoice.referenceYear}-${String(invoice.referenceMonth).padStart(2, '0')}` === invoiceMonth)
+  const visiblePurchases = purchases.filter((purchase) => purchase.installments.some((item) => `${item.invoice.referenceYear}-${String(item.invoice.referenceMonth).padStart(2, '0')}` === invoiceMonth))
   const expenseCategories = useMemo(() => categories.filter((item) => item.type === 'EXPENSE'), [categories])
   const selectedCategory = expenseCategories.find((item) => item.id === purchaseForm.categoryId)
 
   const loadDetail = useCallback(async (cardId) => {
     if (!cardId) { setInvoices([]); setPurchases([]); return }
-    const [loadedInvoices, loadedPurchases] = await Promise.all([cardService.listInvoices(cardId), cardService.listPurchases(cardId)])
+    const [loadedInvoices, loadedPurchases] = await Promise.all([cardService.listInvoices(cardId, 'all'), cardService.listPurchases(cardId)])
     setInvoices(loadedInvoices); setPurchases(loadedPurchases)
   }, [])
   const load = useCallback(async () => {
@@ -52,12 +57,13 @@ export function CardsPage() {
     try {
       const [loadedCards, loadedAccounts, loadedCategories] = await Promise.all([cardService.list('all'), accountService.list('active'), categoryService.list('active')])
       setCards(loadedCards); setAccounts(loadedAccounts); setCategories(loadedCategories)
-      const nextId = selectedId && loadedCards.some((card) => card.id === selectedId) ? selectedId : loadedCards[0]?.id || ''
+      const requestedId = selectedId || searchParams.get('cardId')
+      const nextId = requestedId && loadedCards.some((card) => card.id === requestedId) ? requestedId : loadedCards[0]?.id || ''
       setSelectedId(nextId)
       if (nextId) await loadDetail(nextId)
       setError('')
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsLoading(false) }
-  }, [loadDetail, selectedId])
+  }, [loadDetail, selectedId, searchParams])
   useEffect(() => {
     const timerId = window.setTimeout(() => { void load() }, 0)
     return () => window.clearTimeout(timerId)
@@ -106,15 +112,16 @@ export function CardsPage() {
     {!isLoading && cards.length === 0 ? <EmptyState title="Nenhum cartão cadastrado" description="Adicione seus cartões de crédito para acompanhar limites e faturas." action={<button className="primary-button inline-button" onClick={() => setFormOpen(true)}>Cadastrar cartão</button>} /> : null}
     {!isLoading && cards.length > 0 ? <div className="card-selector">{cards.map((card) => <article className={`credit-card ${card.id === selectedId ? 'is-selected' : ''} ${card.isActive ? '' : 'is-inactive'}`} key={card.id} onClick={() => chooseCard(card.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseCard(card.id) } }} role="button" tabIndex="0" style={{ '--card-color': card.color || '#263B71' }}><button type="button" className="card-edit-button" aria-label={`Editar cartão ${card.name}`} title="Editar cartão" onClick={(event) => { event.stopPropagation(); editCard(card) }}>✎</button><span>{card.brand || (card.type === 'CREDIT' ? 'CRÉDITO' : 'DÉBITO')}</span><strong>{card.name}</strong>{card.type === 'CREDIT' ? <small>Disponível: {formatCurrency(card.availableLimit, user.currency)} de {formatCurrency(card.creditLimit, user.currency)}</small> : <small>Cartão de débito</small>}</article>)}</div> : null}
     {selectedCard?.type === 'CREDIT' ? <>
+      <section className="editor-card invoice-month-controls"><label className="form-field"><span>Fatura do mês (vencimento)</span><input aria-label="Mês da fatura" type="month" value={invoiceMonth} onChange={(event) => setInvoiceMonth(event.target.value)} /></label><p>Fecha no dia {selectedCard.closingDay}. Compras a partir do fechamento entram na próxima fatura. O limite utilizado inclui também parcelas futuras.</p><div className="invoice-month-shortcuts">{invoices.map((invoice) => <button type="button" className="secondary-button inline-button" key={invoice.id} onClick={() => setInvoiceMonth(`${invoice.referenceYear}-${String(invoice.referenceMonth).padStart(2, '0')}`)}>{invoiceLabel(invoice)}{invoice.status === 'PAID' ? ' · Paga' : ''}</button>)}</div></section>
       <section className="limit-summary"><article><span>Limite utilizado</span><strong>{formatCurrency(selectedCard.usedLimit, user.currency)}</strong></article><article><span>Limite disponível</span><strong>{formatCurrency(selectedCard.availableLimit, user.currency)}</strong></article><article><span>Fechamento / vencimento</span><strong>Dia {selectedCard.closingDay} / {selectedCard.dueDay}</strong></article></section>
       <div className="section-heading"><div><p className="eyebrow">Compras</p><h2>Registre uma compra no cartão</h2></div><button className="primary-button inline-button" type="button" onClick={() => setPurchaseFormOpen(true)}>+ Adicionar compra</button></div>
       <FormDrawer open={purchaseFormOpen} eyebrow="Nova compra" title={`Adicionar ao ${selectedCard.name}`} wide onClose={() => setPurchaseFormOpen(false)}><form className="entity-form" onSubmit={submitPurchase}>
         <label className="form-field"><span>Descrição</span><input name="description" value={purchaseForm.description} onChange={changePurchase} required minLength="2" placeholder="Ex.: Notebook" /></label><label className="form-field"><span>Estabelecimento</span><input name="merchant" value={purchaseForm.merchant} onChange={changePurchase} placeholder="Opcional" /></label><label className="form-field"><span>Valor total</span><CurrencyInput name="totalAmount" value={purchaseForm.totalAmount} onChange={changePurchase} required /></label><label className="form-field"><span>Data da compra</span><input name="purchaseDate" value={purchaseForm.purchaseDate} onChange={changePurchase} required type="date" /></label><label className="form-field"><span>Parcelas</span><input name="installmentsCount" value={purchaseForm.installmentsCount} onChange={changePurchase} required type="number" min="1" max="120" step="1" /></label><label className="form-field"><span>Categoria</span><select name="categoryId" value={purchaseForm.categoryId} onChange={changePurchase} required><option value="">Selecione</option>{expenseCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>{selectedCategory?.subcategories?.length ? <label className="form-field"><span>Subcategoria</span><select name="subcategoryId" value={purchaseForm.subcategoryId} onChange={changePurchase}><option value="">Sem subcategoria</option>{selectedCategory.subcategories.filter((item) => item.isActive).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}<label className="form-field form-field-wide"><span>Observações</span><input name="notes" value={purchaseForm.notes} onChange={changePurchase} placeholder="Opcional" /></label><button className="primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Adicionando...' : 'Adicionar compra'}</button>
       </form></FormDrawer>
       <section className="movement-history">
-        <div className="section-heading"><div><p className="eyebrow">Faturas</p><h2>Próximos pagamentos</h2></div></div>
-        {invoices.length === 0 ? <EmptyState title="Sem faturas" description="As compras aparecerão organizadas por fatura." /> : <div className="invoice-list">
-          {invoices.map((invoice) => {
+        <div className="section-heading"><div><p className="eyebrow">Faturas</p><h2>Fatura selecionada · {invoiceMonth}</h2></div></div>
+        {visibleInvoices.length === 0 ? <EmptyState title="Sem fatura neste mês" description="Selecione outro mês para consultar as demais faturas." /> : <div className="invoice-list">
+          {visibleInvoices.map((invoice) => {
             const hasAmountDue = Number(invoice.totalAmount) > 0
             const isPayable = invoice.status !== 'PAID' && hasAmountDue
             const statusLabel = invoice.effectiveStatus === 'PAID' ? 'Paga' : invoice.effectiveStatus === 'CLOSED' ? 'Fechada' : 'Aberta'
@@ -123,7 +130,7 @@ export function CardsPage() {
               <div>
                 <span className={`status-tag status-${invoice.effectiveStatus.toLowerCase()}`}>{statusLabel}</span>
                 <h3>Fatura {invoiceLabel(invoice)}</h3>
-                <small>Vence em {formatDate(invoice.dueDate)} · {invoice.installments.length} lançamento(s)</small>
+                <small>Fecha em {formatDate(invoice.closingDate)} · Vence em {formatDate(invoice.dueDate)} · {invoice.installments.length} lançamento(s)</small>
               </div>
               <strong>{formatCurrency(invoice.totalAmount, user.currency)}</strong>
               {isPayable ? <div className="invoice-pay">
@@ -138,7 +145,7 @@ export function CardsPage() {
           })}
         </div>}
       </section>
-      <section className="movement-history"><div className="section-heading"><div><p className="eyebrow">Compras</p><h2>Compras no cartão</h2></div></div>{purchases.length === 0 ? <p className="muted-copy">Nenhuma compra registrada neste cartão.</p> : <div className="movement-list">{purchases.map((purchase) => <article className="movement-row" key={purchase.id}><span className="movement-symbol transfer">▣</span><div className="movement-info"><strong>{purchase.description}</strong><small>{purchase.category.name} · {purchase.installmentsCount}x · {formatDate(purchase.purchaseDate)}</small></div><div className="movement-value"><strong>{formatCurrency(purchase.totalAmount, user.currency)}</strong></div><div className="row-actions"><button type="button" className="danger-action" onClick={() => cancelPurchase(purchase)}>Cancelar</button></div></article>)}</div>}</section>
+      <section className="movement-history"><div className="section-heading"><div><p className="eyebrow">Compras</p><h2>Compras da fatura selecionada</h2></div></div>{visiblePurchases.length === 0 ? <p className="muted-copy">Nenhuma compra nesta fatura.</p> : <div className="movement-list">{visiblePurchases.map((purchase) => <article className="movement-row" key={purchase.id}><span className="movement-symbol transfer">▣</span><div className="movement-info"><strong>{purchase.description}</strong><small>{purchase.category.name} · {purchase.installmentsCount}x · {formatDate(purchase.purchaseDate)}</small></div><div className="movement-value"><strong>{formatCurrency(purchase.installments.filter((item) => `${item.invoice.referenceYear}-${String(item.invoice.referenceMonth).padStart(2, '0')}` === invoiceMonth).reduce((total, item) => total + Number(item.amount), 0), user.currency)}</strong></div><div className="row-actions"><button type="button" className="danger-action" onClick={() => cancelPurchase(purchase)}>Cancelar</button></div></article>)}</div>}</section>
     </> : null}
   </section>
 }

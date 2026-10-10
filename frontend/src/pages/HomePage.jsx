@@ -7,11 +7,6 @@ import { getApiError } from "../utils/get-api-error.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { FINANCIAL_DATA_CHANGED } from "../utils/financial-events.js";
 
-function addMonth(value, amount = 1) {
-  const [year, month] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1 + amount, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-}
 
 function firstDayOfMonth(value) {
   return `${value}-01`;
@@ -91,9 +86,9 @@ export function HomePage() {
   const { user } = useAuth();
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [startDate, setStartDate] = useState(() => firstDayOfMonth(currentMonth));
-  const [endDate, setEndDate] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
+  const [endDate, setEndDate] = useState(() => lastDayOfMonth(currentMonth));
   const [expenseFrom, setExpenseFrom] = useState(() => firstDayOfMonth(currentMonth));
-  const [expenseTo, setExpenseTo] = useState(() => lastDayOfMonth(addMonth(currentMonth)));
+  const [expenseTo, setExpenseTo] = useState(() => lastDayOfMonth(currentMonth));
   const [chartMonths, setChartMonths] = useState(6);
   const [activeChart, setActiveChart] = useState("anatomy");
   const [agendaRange, setAgendaRange] = useState("7");
@@ -108,7 +103,7 @@ export function HomePage() {
   useEffect(() => {
     let active = true;
     cardService.list("all")
-      .then((items) => { if (active) setCards(items); })
+      .then((items) => { if (active) setCards(items.filter((card) => card.type === 'CREDIT')); })
       .catch((error) => { if (active) setCardsError(getApiError(error)); });
     return () => { active = false; };
   }, []);
@@ -199,9 +194,9 @@ export function HomePage() {
           <p>Acompanhe seu fluxo financeiro com total clareza.</p>
         </div>
         <div className="period-picker">
-          <span>Período de referência</span>
+          <span>{cardId ? 'Mês da fatura (vencimento)' : 'Período de referência'}</span>
           <strong>{formatReferencePeriod(startDate, endDate)}</strong>
-          <div className="period-picker-fields">
+          {cardId ? <label><span>Fatura</span><input aria-label="Mês da fatura na visão geral" type="month" value={endDate.slice(0, 7)} onChange={(event) => { if (!event.target.value) return; const start = firstDayOfMonth(event.target.value); const end = lastDayOfMonth(event.target.value); setStartDate(start); setEndDate(end); setExpenseFrom(start); setExpenseTo(end); setHoveredSeries(null); }} /></label> : <div className="period-picker-fields">
             <label>
               <span>De</span>
               <input
@@ -233,9 +228,10 @@ export function HomePage() {
               />
             </label>
           </div>
+          }
           <label className="dashboard-card-filter">
             <span>Cartão</span>
-            <select value={cardId} onChange={(event) => { setHoveredSeries(null); setCardId(event.target.value); }}>
+            <select value={cardId} onChange={(event) => { setHoveredSeries(null); setCardId(event.target.value); if (event.target.value) { const month = endDate.slice(0, 7); setStartDate(firstDayOfMonth(month)); setEndDate(lastDayOfMonth(month)); setExpenseFrom(firstDayOfMonth(month)); setExpenseTo(lastDayOfMonth(month)); } }}>
               <option value="">Todos os cartões</option>
               {cards.map((card) => (
                 <option key={card.id} value={card.id}>{card.name}{card.isActive ? "" : " (inativo)"}</option>
@@ -278,6 +274,7 @@ export function HomePage() {
           ) : null}
 
           <section className="financial-summary" aria-labelledby="financial-summary-title">
+            {cardId ? <Link className="form-notice invoice-summary-link" to={'/cartoes?cardId=' + cardId + '&month=' + endDate.slice(0, 7)}>Fatura de {endDate.slice(0, 7)}: <strong>{formatCurrency(data.summary.invoiceTotal, user.currency)}</strong> · Ver compras e parcelas →</Link> : null}
             <div className="section-heading dashboard-section-heading">
               <div>
                 <p className="eyebrow">Sua posição agora</p>
@@ -291,10 +288,10 @@ export function HomePage() {
                 <strong>{formatCurrency(data.summary.currentBalance, user.currency)}</strong>
                 <small>Ver contas e saldos →</small>
               </Link>
-              <Link className="summary-card" to="/movimentacoes">
-                <span>Gastos já pagos no período</span>
+              <Link className="summary-card" to={cardId ? '/cartoes?cardId=' + cardId + '&month=' + endDate.slice(0, 7) : '/movimentacoes'}>
+                <span>{cardId ? 'Faturas pagas no mês selecionado' : 'Gastos já pagos no período'}</span>
                 <strong className="expense-text">{formatCurrency(data.summary.paidExpenses, user.currency)}</strong>
-                <small>Ver lançamentos concluídos →</small>
+                <small>{cardId ? 'Ver fatura →' : 'Ver lançamentos concluídos →'}</small>
               </Link>
               <a className={`summary-card ${Number(data.summary.futureCommitments) > 0 ? "summary-card-warning" : ""}`} href="#agenda-financeira">
                 <span>Compromissos dos próximos 30 dias</span>
@@ -385,7 +382,7 @@ export function HomePage() {
             <div className="chart-header">
               <div>
                 <p className="eyebrow">Comparativo Mensal</p>
-                <h2>{cardId ? "Pagamentos do cartão por mês" : "Receitas x Despesas"}</h2>
+                <h2>{cardId ? "Faturas do cartão por mês" : "Receitas x Despesas"}</h2>
                 <label className="chart-range-filter">
                   <span>Período do gráfico</span>
                   <select value={chartMonths} onChange={(event) => { setHoveredSeries(null); setChartMonths(Number(event.target.value)) }}>
@@ -405,7 +402,7 @@ export function HomePage() {
                       <strong>{formatCurrency(activeMonthData.income, user.currency)}</strong>
                     </span> : null}
                     <span className="chart-val-expense">
-                      <i className="dot dot-expense" /> {cardId ? "Pagamentos:" : "Despesas:"}{" "}
+                      <i className="dot dot-expense" /> {cardId ? "Fatura:" : "Despesas:"}{" "}
                       <strong>{formatCurrency(activeMonthData.expense, user.currency)}</strong>
                     </span>
                     {!cardId ? <span className="chart-val-result">
@@ -429,7 +426,7 @@ export function HomePage() {
             </div>
 
             <div className="bar-chart-container">
-              <div className="bar-chart" role="img" aria-label={cardId ? "Gráfico de pagamentos do cartão por mês" : "Gráfico de receitas e despesas por mês"}>
+              <div className="bar-chart" role="img" aria-label={cardId ? "Gráfico de faturas do cartão por mês" : "Gráfico de receitas e despesas por mês"}>
                 {data.monthlySeries.map((item) => {
                   const isCurrent =
                     item.month >= startDate.slice(0, 7) && item.month <= endDate.slice(0, 7);
@@ -479,7 +476,7 @@ export function HomePage() {
                 <i className="dot dot-income" /> Receitas
               </span> : null}
               <span className="legend-item">
-                <i className="dot dot-expense" /> {cardId ? "Pagamentos do cartão" : "Despesas"}
+                <i className="dot dot-expense" /> {cardId ? "Total das faturas" : "Despesas"}
               </span>
               <small className="chart-tip">
                 Toque ou passe o mouse nas barras para ver detalhes do mês.
@@ -494,7 +491,7 @@ export function HomePage() {
                 <h2>Despesas por categoria</h2>
                 <p className="chart-description">Veja quanto cada categoria representa no total gasto no período.</p>
               </div>
-              <div className="expense-date-filter">
+              {!cardId ? <div className="expense-date-filter">
                 <label>
                   <span>De</span>
                   <input type="date" value={expenseFrom} max={expenseTo} onChange={(event) => setExpenseFrom(event.target.value)} />
@@ -503,7 +500,7 @@ export function HomePage() {
                   <span>Até</span>
                   <input type="date" value={expenseTo} min={expenseFrom} onChange={(event) => setExpenseTo(event.target.value)} />
                 </label>
-              </div>
+              </div> : <p>Compras e parcelas da fatura de {endDate.slice(0, 7)}.</p>}
             </div>
             {pieItems.length ? (
               <div className="expense-anatomy-content">

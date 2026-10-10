@@ -54,16 +54,15 @@ function dueNonCardCommitment() {
 }
 
 async function getCashPeriodTotals(userId, range, cardId) {
+  if (cardId) {
+    const invoices = await prisma.creditCardInvoice.findMany({ where: { userId, creditCardId: cardId, status: "PAID", dueDate: { gte: range.start, lt: range.end } }, include: { installments: { where: { status: { not: "CANCELLED" } }, include: { purchase: { include: { category: true } } } } } });
+    const categories = new Map();
+    for (const invoice of invoices) for (const item of invoice.installments) add(categories, item.purchase.category.name, item.amount);
+    return { income: new Prisma.Decimal(0), expense: invoices.reduce((total, invoice) => total.plus(invoice.totalAmount), new Prisma.Decimal(0)), categories };
+  }
   const transactions = await prisma.transaction.findMany({
     where: {
       ...cashPeriodTransactions(userId, range),
-      ...(cardId ? {
-        type: "EXPENSE",
-        AND: [{ OR: [
-          { creditCardInvoice: { is: { creditCardId: cardId } } },
-          { creditCardId: cardId, creditCardInvoiceId: null },
-        ] }],
-      } : {}),
     },
     include: { category: { select: { name: true } } },
   });
@@ -322,21 +321,19 @@ async function getForwardView(userId, balance) {
 
 async function getExpenseBreakdown(userId, range, cardId) {
   const [cashExpenses, cardInstallments] = await Promise.all([
-    prisma.transaction.findMany({
+    cardId ? Promise.resolve([]) : prisma.transaction.findMany({
       where: {
         ...cashPeriodTransactions(userId, range),
         type: "EXPENSE",
         creditCardInvoiceId: null,
-        ...(cardId ? { creditCardId: cardId } : {}),
       },
       include: { category: { select: { name: true } } },
     }),
     prisma.cardInstallment.findMany({
       where: {
         userId,
-        ...(cardId ? { creditCardId: cardId, status: { not: "CANCELLED" }, purchase: { status: "ACTIVE" } } : { status: "PENDING" }),
+        ...(cardId ? { creditCardId: cardId } : {}), status: { not: "CANCELLED" }, purchase: { status: "ACTIVE" },
         invoice: {
-          ...(cardId ? {} : { status: { not: "PAID" } }),
           dueDate: { gte: range.start, lt: range.end },
         },
       },
@@ -365,11 +362,11 @@ export async function getDashboard(userId, query = {}) {
   const months = query.months ?? 6;
   const startRange = monthBounds(startMonth);
   const endRange = monthBounds(endMonth);
-  const rangeStart = query.startDate ?? startRange.start.toISOString().slice(0, 10);
-  const rangeEnd = query.endDate ?? new Date(endRange.end.getTime() - 86_400_000).toISOString().slice(0, 10);
+  const rangeStart = cardId ? startRange.start.toISOString().slice(0, 10) : query.startDate ?? startRange.start.toISOString().slice(0, 10);
+  const rangeEnd = cardId ? new Date(endRange.end.getTime() - 86_400_000).toISOString().slice(0, 10) : query.endDate ?? new Date(endRange.end.getTime() - 86_400_000).toISOString().slice(0, 10);
   const range = dateRange(rangeStart, rangeEnd);
-  const expenseFrom = query.expenseFrom ?? rangeStart;
-  const expenseTo = query.expenseTo ?? rangeEnd;
+  const expenseFrom = cardId ? rangeStart : query.expenseFrom ?? rangeStart;
+  const expenseTo = cardId ? rangeEnd : query.expenseTo ?? rangeEnd;
   const expenseRange = dateRange(expenseFrom, expenseTo);
 
   const seriesRanges = Array.from({ length: months }, (_, index) => {
@@ -442,7 +439,11 @@ export async function getDashboard(userId, query = {}) {
   const [seriesTotals, cardUsage, commitments, overdueTransactions, movementCount] =
     await Promise.all([
       Promise.all(
-        seriesRanges.map((seriesRange) => getCashPeriodTotals(userId, seriesRange, cardId)),
+        seriesRanges.map(async (seriesRange) => {
+          if (!cardId) return getCashPeriodTotals(userId, seriesRange);
+          const total = await prisma.cardInstallment.aggregate({ where: { userId, creditCardId: cardId, status: { not: "CANCELLED" }, purchase: { status: "ACTIVE" }, invoice: { dueDate: { gte: seriesRange.start, lt: seriesRange.end } } }, _sum: { amount: true } });
+          return { income: new Prisma.Decimal(0), expense: total._sum.amount || new Prisma.Decimal(0) };
+        }),
       ),
       Promise.all(
         cards.map(async (card) => {
@@ -533,6 +534,7 @@ export async function getDashboard(userId, query = {}) {
       availableBalance: money(balance),
       currentBalance: money(balance),
       paidExpenses: money(periodTotals.expense),
+      invoiceTotal: cardId ? money(periodTotals.expense.plus(pendingCardInstallments.reduce((total, item) => total.plus(item.amount), new Prisma.Decimal(0)))) : null,
       futureCommitments: forwardView.futureCommitments,
       freeBalanceProjected: forwardView.freeBalanceProjected,
       projectedBalance: money(projectedBalance),

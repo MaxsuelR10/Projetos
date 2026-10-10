@@ -8,6 +8,7 @@ const cardSelect = { id: true, name: true, institution: true, brand: true, type:
 const invoiceInclude = {
   creditCard: { select: cardSelect },
   installments: {
+    where: { status: { not: "CANCELLED" }, purchase: { status: "ACTIVE" } },
     include: { purchase: { select: { id: true, description: true, merchant: true, installmentsCount: true, category: { select: { name: true } } } } },
     orderBy: { number: "asc" },
   },
@@ -66,7 +67,7 @@ async function ensureInvoice(db, userId, card, reference, amount) {
   return invoice;
 }
 
-async function realignUnpaidInstallments(db, userId, card) {
+export async function realignUnpaidInstallments(db, userId, card) {
   const installments = await db.cardInstallment.findMany({
     where: { userId, creditCardId: card.id, invoice: { status: { not: "PAID" } } },
     include: { purchase: { select: { purchaseDate: true } }, invoice: { select: { id: true } } },
@@ -216,13 +217,13 @@ export async function cancelPurchase(userId, id) {
   });
 }
 
-export async function listInvoices(userId, cardId) {
+export async function listInvoices(userId, cardId, query = {}) {
   await findCard(prisma, userId, cardId);
   const invoices = await prisma.creditCardInvoice.findMany({
     // An open invoice stays payable after its closing date. Filtering it out here
     // hid overdue/current invoices from the Cards screen and made their purchases
     // appear to vanish even though the installments were still pending.
-    where: { userId, creditCardId: cardId, status: "OPEN" },
+    where: { userId, creditCardId: cardId, ...(query.status === "all" || query.month ? {} : { status: "OPEN" }), ...(query.month ? { referenceYear: Number(query.month.slice(0, 4)), referenceMonth: Number(query.month.slice(5, 7)) } : {}) },
     include: invoiceInclude,
     orderBy: [{ referenceYear: "desc" }, { referenceMonth: "desc" }],
   });

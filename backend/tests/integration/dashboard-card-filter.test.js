@@ -116,7 +116,7 @@ describe.sequential("filtro por cartão na Dashboard", () => {
       pendingBills: "150", monthlyResult: "370",
     });
     expect(all.expenseBreakdown).toEqual(expect.arrayContaining([
-      { name: firstCategory.name, amount: "90" },
+      { name: firstCategory.name, amount: "190" },
       { name: secondCategory.name, amount: "90" },
     ]));
   });
@@ -134,7 +134,7 @@ describe.sequential("filtro por cartão na Dashboard", () => {
     const categoryTotal = a.expenseBreakdown.reduce((total, item) => total + Number(item.amount), 0);
     expect(categoryTotal).toBe(160);
     expect(a.expenseBreakdown.reduce((total, item) => total + (Number(item.amount) / categoryTotal) * 100, 0)).toBeCloseTo(100);
-    expect(a.monthlySeries.at(-1)).toMatchObject({ income: "0", expense: "0" });
+    expect(a.monthlySeries.at(-1)).toMatchObject({ income: "0", expense: "60" });
 
     const b = await dashboard(cardB);
     expect(b.summary).toMatchObject({ monthlyExpense: "0", paidBills: "0", pendingBills: "90", monthlyResult: "0" });

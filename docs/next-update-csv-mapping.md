@@ -1,6 +1,6 @@
 # Próxima atualização — Mapeamento assistido de CSV
 
-Status: proposta preparada após a atualização 4; ainda não implementada.
+Status: concluída em 10/10/2026 como atualização 5. Veja [a entrega](update-5-csv-mapping-and-invoice-cycle.md).
 
 ## Objetivo
 

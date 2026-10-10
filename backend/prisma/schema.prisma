@@ -152,6 +152,7 @@ model User {
   categories                Category[]
   categoryRules             CategoryRule[]
   reconciliations           AccountReconciliation[]
+  importProfiles            CsvImportProfile[]
   subcategories             Subcategory[]
   transactions              Transaction[]
   transfers                 Transfer[]
@@ -170,6 +171,19 @@ model User {
   assistantMessages         AssistantMessage[]
   createdAt                 DateTime                   @default(now()) @db.Timestamptz(3)
   updatedAt                 DateTime                   @updatedAt @db.Timestamptz(3)
+}
+
+model CsvImportProfile {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String   @db.VarChar(100)
+  headers   Json
+  mapping   Json
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([userId, name])
 }
 
 model Account {

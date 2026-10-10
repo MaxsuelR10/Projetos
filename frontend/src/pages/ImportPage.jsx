@@ -8,6 +8,7 @@ import { formatCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 import { useToast } from '../hooks/useToast.js'
+import { CsvMapping } from '../components/forms/CsvMapping.jsx'
 
 const paymentMethods = [
   ['OTHER', 'Outro'],
@@ -25,8 +26,9 @@ function normalizeAmount(value) {
   if (!input) return ''
   const numeric = input.replace(/[^\d,.-]/g, '')
   const normalized = numeric.includes(',') ? numeric.replace(/\./g, '').replace(',', '.') : numeric.replace(/,/g, '')
-  const amount = Number(normalized)
-  return Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : input
+  if (!/^\d{1,15}(?:\.\d{1,4})?$/.test(normalized) || Number(normalized) <= 0) return input
+  const [whole, fraction = ''] = normalized.split('.')
+  return whole + '.' + fraction.padEnd(2, '0')
 }
 function isRowReady(row) {
   const amount = normalizeAmount(row.amount)
@@ -57,10 +59,16 @@ export function ImportPage() {
   const [isReading, setIsReading] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [error, setError] = useState('')
+  const [content, setContent] = useState('')
+  const [inspection, setInspection] = useState(null)
+  const [mapping, setMapping] = useState(null)
+  const [profiles, setProfiles] = useState([])
+  const [profileId, setProfileId] = useState('')
 
   useEffect(() => {
-    Promise.all([accountService.list('active'), categoryService.list('active'), cardService.list('active')])
-      .then(([loadedAccounts, loadedCategories, loadedCards]) => {
+    Promise.all([accountService.list('active'), categoryService.list('active'), cardService.list('active'), importService.listProfiles()])
+      .then(([loadedAccounts, loadedCategories, loadedCards, loadedProfiles]) => {
+        setProfiles(loadedProfiles)
         setAccounts(loadedAccounts)
         setCategories(loadedCategories)
         setCards(loadedCards.filter((card) => card.type === 'CREDIT'))
@@ -104,9 +112,45 @@ export function ImportPage() {
     setIsReading(true)
     setError('')
     try {
-      const content = await file.text()
-      const preview = await importService.previewCsv(accountId, content, importType)
+      const fileContent = await file.text()
+      const inspected = await importService.inspectCsv(accountId, fileContent)
+      setContent(fileContent)
+      setInspection(inspected)
+      setMapping(inspected.mapping)
+      setProfileId('')
       setFileName(file.name)
+      setRows([])
+      setResult(null)
+      toast.success('Arquivo lido. Confira as colunas e gere a prévia.')
+    } catch (requestError) {
+      setRows([]); setInspection(null)
+      showError(getApiError(requestError, 'Não foi possível ler este CSV.'))
+    } finally { setIsReading(false); event.target.value = '' }
+  }
+
+  function changeMapping(value) { setMapping(value); setProfileId(''); setRows([]); setImportId('') }
+  async function changeDelimiter(delimiter) {
+    setIsReading(true); setRows([]); setImportId('')
+    try { const inspected = await importService.inspectCsv(accountId, content, delimiter); setInspection(inspected); setMapping(inspected.mapping); setProfileId('') }
+    catch (requestError) { setInspection(null); showError(getApiError(requestError)) }
+    finally { setIsReading(false) }
+  }
+  async function saveProfile(name) {
+    setIsReading(true)
+    try { const saved = await importService.saveProfile(name, inspection.headers, mapping); setProfiles(await importService.listProfiles()); setProfileId(saved.id); toast.success('Perfil salvo.') }
+    catch (requestError) { showError(getApiError(requestError)) }
+    finally { setIsReading(false) }
+  }
+  async function deleteProfile(id) {
+    setIsReading(true)
+    try { await importService.deleteProfile(id); setProfiles((current) => current.filter((profile) => profile.id !== id)); setProfileId(''); toast.success('Perfil excluído.') }
+    catch (requestError) { showError(getApiError(requestError)) }
+    finally { setIsReading(false) }
+  }
+  async function generatePreview() {
+    setIsReading(true); setError(''); setRows([])
+    try {
+      const preview = await importService.previewCsv(accountId, content, importType, mapping)
       setImportId(preview.importId)
       setCurrentBalance(preview.account.currentBalance)
       setResult(null)
@@ -127,7 +171,6 @@ export function ImportPage() {
       showError(getApiError(requestError, 'Não foi possível ler este CSV.'))
     } finally {
       setIsReading(false)
-      event.target.value = ''
     }
   }
 
@@ -168,6 +211,7 @@ export function ImportPage() {
   }
 
   async function commit() {
+    if (isImporting || isReading) return
     if (!selectedRows.length) {
       showError('Selecione pelo menos um lançamento novo para importar.')
       return
@@ -212,6 +256,7 @@ export function ImportPage() {
       setRows([])
       setImportId('')
       setFileName('')
+      setInspection(null); setContent(''); setMapping(null)
     } catch (requestError) {
       showError(getApiError(requestError, 'Não foi possível concluir a importação.'))
     } finally {
@@ -248,6 +293,7 @@ export function ImportPage() {
             <span><strong>{result.rejected}</strong> recusados</span>
           </div>
           <p>Saldo atual da conta: <strong>{formatCurrency(result.balanceAfter)}</strong></p>
+          <Link className="secondary-button inline-button" to="/conciliacao">Conferir o mês na conciliação →</Link>
         </section>
       ) : null}
 
@@ -259,7 +305,7 @@ export function ImportPage() {
         <div className="import-controls">
           <label className="form-field">
             <span>Conta do extrato</span>
-            <select value={accountId} onChange={(event) => { setAccountId(event.target.value); setRows([]); setFileName('') }}>
+            <select value={accountId} disabled={isReading || isImporting} onChange={(event) => { setAccountId(event.target.value); setRows([]); setFileName(''); setInspection(null); setContent(''); setImportId('') }}>
               <option value="">Selecione</option>
               {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
             </select>
@@ -267,11 +313,10 @@ export function ImportPage() {
           <label className="form-field">
             <span>Tipo dos lançamentos</span>
             <small>Detecte pelo sinal do valor ou force um único tipo para todo o arquivo.</small>
-            <select value={importType} onChange={(event) => {
+            <select value={importType} disabled={isReading || isImporting} onChange={(event) => {
               const nextType = event.target.value
               setImportType(nextType)
               setRows([])
-              setFileName('')
               if (nextType !== 'EXPENSE') {
                 setPaymentMethod('OTHER')
                 setCreditCardId('')
@@ -299,17 +344,19 @@ export function ImportPage() {
             </label>
           ) : null}
           <label className="file-picker">
-            <input type="file" accept=".csv,text/csv" onChange={readFile} disabled={isReading || !accountId} />
+            <input type="file" accept=".csv,text/csv" onChange={readFile} disabled={isReading || isImporting || !accountId} />
             <span>{isReading ? 'Lendo arquivo...' : 'Anexar CSV'}</span>
           </label>
         </div>
         {accounts.length === 0 ? <p className="form-alert">Crie uma conta antes de importar um extrato.</p> : null}
       </section>
 
+      {inspection && mapping ? <CsvMapping inspection={inspection} mapping={mapping} profiles={profiles} profileId={profileId} busy={isReading || isImporting} onChange={changeMapping} onDelimiter={changeDelimiter} onProfile={(id) => { const profile = profiles.find((item) => item.id === id); setProfileId(id); setMapping(profile?.mapping || inspection.mapping); setRows([]); setImportId('') }} onSaveProfile={saveProfile} onDeleteProfile={deleteProfile} onPreview={generatePreview} /> : null}
+
       {rows.length > 0 ? (
         <section className="import-preview">
           <div className="section-heading">
-            <div><p className="eyebrow">2. Conferência</p><h2>{fileName}</h2><p>Revise o impacto, corrija linhas e escolha exatamente o que deseja importar.</p></div>
+            <div><p className="eyebrow">3. Conferência</p><h2>{fileName}</h2><p>Revise o impacto, corrija linhas e escolha exatamente o que deseja importar.</p></div>
             <button className="primary-button" type="button" disabled={isImporting || selectedRows.length === 0} onClick={commit}>{isImporting ? 'Importando...' : `Confirmar ${selectedRows.length} lançamento(s)`}</button>
           </div>
           <div className="import-impact-grid">

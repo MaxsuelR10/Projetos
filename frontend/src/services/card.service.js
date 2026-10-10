@@ -5,7 +5,7 @@ export const cardService = {
   async create(data) { const response = await api.post('/cards', data); return response.data.card },
   async update(id, data) { const response = await api.patch(`/cards/${id}`, data); return response.data.card },
   async remove(id) { await api.delete(`/cards/${id}`) },
-  async listInvoices(id) { const response = await api.get(`/cards/${id}/invoices`); return response.data.invoices },
+  async listInvoices(id, status = 'open') { const response = await api.get(`/cards/${id}/invoices`, { params: { status } }); return response.data.invoices },
   async listPurchases(id, includeCancelled = false) { const response = await api.get(`/cards/${id}/purchases`, { params: { includeCancelled } }); return response.data.purchases },
   async createPurchase(id, data) { const response = await api.post(`/cards/${id}/purchases`, data); return response.data.purchase },
   async cancelPurchase(id) { await api.delete(`/card-purchases/${id}`) },

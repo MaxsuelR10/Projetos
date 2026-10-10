@@ -39,7 +39,8 @@ export function invoiceDates(card, referenceYear, referenceMonth) {
 
 export function cardInstallmentCompetence(card, purchaseDate, installmentIndex = 0) {
   const purchase = dateParts(purchaseDate);
-  const closingOffset = purchase.day > card.closingDay ? 1 : 0;
+  const effectiveClosingDay = dateWithDay(purchase.year, purchase.month, card.closingDay).getUTCDate();
+  const closingOffset = purchase.day >= effectiveClosingDay ? 1 : 0;
   const dueOffset = card.dueDay <= card.closingDay ? 1 : 0;
   const reference = addMonths(purchase.year, purchase.month, closingOffset + dueOffset + installmentIndex);
   return { ...reference, ...invoiceDates(card, reference.year, reference.month) };

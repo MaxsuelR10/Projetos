@@ -1670,3 +1670,17 @@ textarea { touch-action: manipulation; }
   .reconciliation-event { align-items: start; flex-direction: column; }
   .reconciliation-metrics strong { font-size: 1rem; }
 }
+.csv-mapping { min-width: 0; }
+.csv-mapping fieldset { min-width: 0; border: 0; padding: 0; margin: 0; display: grid; gap: 20px; }
+.csv-mapping-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.csv-sample-wrap { min-width: 0; overflow: auto; max-height: 280px; }
+.csv-sample { border-collapse: collapse; width: 100%; text-align: left; }
+.csv-sample caption { text-align: left; padding: 10px 0; font-weight: 700; }
+.csv-sample th, .csv-sample td { padding: 10px; border-bottom: 1px solid var(--border-color, #dde8e2); overflow-wrap: anywhere; min-width: 110px; max-width: 320px; }
+.csv-profile-actions { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.csv-profile-actions .form-field { flex: 1; min-width: 180px; }
+.invoice-month-controls { display: grid; gap: 14px; }
+.invoice-month-controls .form-field { max-width: 320px; }
+.invoice-month-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+.invoice-summary-link { display: block; margin-bottom: 16px; text-decoration: none; }
+@media (max-width: 700px) { .csv-mapping-grid { grid-template-columns: 1fr; } .csv-profile-actions { align-items: stretch; flex-direction: column; } }

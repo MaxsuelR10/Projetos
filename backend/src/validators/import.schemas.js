@@ -19,8 +19,25 @@ const importRowSchema = z.object({
   }
 });
 
+const column = z.number().int().min(0).max(99).nullable();
+export const csvMappingSchema = z.object({
+  delimiter: z.enum([";", ",", "\t"]),
+  dateFormat: z.enum(["AUTO", "ISO", "DMY", "MDY"]),
+  decimalSeparator: z.enum(["AUTO", "COMMA", "DOT"]),
+  amountMode: z.enum(["SIGNED", "SPLIT"]),
+  date: column, description: column, amount: column, debit: column, credit: column,
+}).strict().superRefine((mapping, context) => {
+  const required = [mapping.date, mapping.description, ...(mapping.amountMode === "SIGNED" ? [mapping.amount] : [mapping.debit, mapping.credit].filter((value) => value !== null))];
+  if (required.some((value) => value === null) || required.length < 3) context.addIssue({ code: "custom", message: "Escolha as colunas de data, descrição e valores" });
+  if (new Set(required).size !== required.length) context.addIssue({ code: "custom", message: "Cada campo deve usar uma coluna diferente" });
+});
+
+export const inspectCsvSchema = z.object({ body: z.object({ accountId: idSchema, content: z.string().min(1).max(1_000_000), delimiter: z.enum([";", ",", "\t"]).optional() }).strict() });
+export const saveImportProfileSchema = z.object({ body: z.object({ name: z.string().trim().min(2).max(100), headers: z.array(z.string().max(500)).min(3).max(100), mapping: csvMappingSchema }).strict() });
+export const importProfileIdSchema = z.object({ params: z.object({ id: idSchema }) });
+
 export const previewCsvImportSchema = z.object({
-  body: z.object({ accountId: idSchema, content: z.string().min(1).max(1_000_000), type: transactionTypeSchema.optional() }).strict(),
+  body: z.object({ accountId: idSchema, content: z.string().min(1).max(1_000_000), type: transactionTypeSchema.optional(), mapping: csvMappingSchema.optional(), profileId: idSchema.optional() }).strict().refine((data) => !(data.mapping && data.profileId), "Escolha um perfil ou um mapeamento"),
 });
 
 export const commitCsvImportSchema = z.object({

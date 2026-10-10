@@ -101,12 +101,14 @@ describe.sequential("cartões, parcelas e faturas", () => {
     const longTermCard = await agent.post("/api/cards").send({ name: "Cartão parcelado", type: "CREDIT", creditLimit: "2000", closingDay: 25, dueDay: 5 });
     expect(longTermCard.status).toBe(201);
 
-    const installmentPurchase = await agent.post(`/api/cards/${longTermCard.body.card.id}/purchases`).send({ categoryId, description: "Compra em 12x", totalAmount: "1200.00", purchaseDate: "2026-08-25", installmentsCount: 12 });
+    const installmentPurchase = await agent.post(`/api/cards/${longTermCard.body.card.id}/purchases`).send({ categoryId, description: "Compra em 12x", totalAmount: "1200.00", purchaseDate: "2026-08-24", installmentsCount: 12 });
     expect(installmentPurchase.status).toBe(201);
     expect(installmentPurchase.body.purchase.installments).toHaveLength(12);
     expect(installmentPurchase.body.purchase.installments.every((item) => item.amount === "100")).toBe(true);
 
-    const beforeClosing = await agent.post(`/api/cards/${longTermCard.body.card.id}/purchases`).send({ categoryId, description: "Antes do fechamento", totalAmount: "10.00", purchaseDate: "2026-08-25", installmentsCount: 1 });
+    const beforeClosing = await agent.post(`/api/cards/${longTermCard.body.card.id}/purchases`).send({ categoryId, description: "Antes do fechamento", totalAmount: "10.00", purchaseDate: "2026-08-24", installmentsCount: 1 });
+    const onClosing = await agent.post(`/api/cards/${longTermCard.body.card.id}/purchases`).send({ categoryId, description: "No fechamento", totalAmount: "30.00", purchaseDate: "2026-08-25", installmentsCount: 1 });
+    expect(onClosing.status).toBe(201);
     const afterClosing = await agent.post(`/api/cards/${longTermCard.body.card.id}/purchases`).send({ categoryId, description: "Depois do fechamento", totalAmount: "20.00", purchaseDate: "2026-08-26", installmentsCount: 1 });
     expect(beforeClosing.status).toBe(201);
     expect(afterClosing.status).toBe(201);
@@ -118,6 +120,7 @@ describe.sequential("cartões, parcelas e faturas", () => {
     expect(invoices).toHaveLength(12);
     const referenceFor = (description) => invoices.find((invoice) => invoice.installments.some((item) => item.purchase.description === description));
     expect(referenceFor("Antes do fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 9 });
+    expect(referenceFor("No fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 10 });
     expect(referenceFor("Depois do fechamento")).toMatchObject({ referenceYear: 2026, referenceMonth: 10 });
   });
 

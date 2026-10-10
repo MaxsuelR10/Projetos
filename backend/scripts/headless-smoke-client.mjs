@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -9,7 +9,7 @@ export async function openSmokeBrowser(origin, cookie) {
   const folder = await mkdtemp(join(tmpdir(), "reconciliation-smoke-"));
   const browser = spawn(process.env.CHROME_PATH || "C:/Program Files/Google/Chrome/Application/chrome.exe", [
     "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-    "--remote-debugging-port=9334", "--user-data-dir=" + join(folder, "profile"), "about:blank",
+    "--remote-debugging-port=0", "--user-data-dir=" + join(folder, "profile"), "about:blank",
   ], { windowsHide: true, stdio: "ignore" });
   let socket;
   const pending = new Map();
@@ -18,7 +18,10 @@ export async function openSmokeBrowser(origin, cookie) {
   try {
     let tabs;
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      try { tabs = await (await fetch("http://127.0.0.1:9334/json")).json(); break; } catch { await pause(150); }
+      try {
+        const port = (await readFile(join(folder, "profile", "DevToolsActivePort"), "utf8")).split("\n")[0];
+        tabs = await (await fetch("http://127.0.0.1:" + port + "/json")).json(); break;
+      } catch { await pause(150); }
     }
     assert(tabs, "Chrome did not start");
     socket = new WebSocket(tabs.find((tab) => tab.type === "page").webSocketDebuggerUrl);
