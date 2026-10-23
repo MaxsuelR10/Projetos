@@ -1,0 +1,10 @@
+node_modules/
+.sites/
+.openai/*.tar.gz
+*.log
+test-results/
+.env
+.env.*
+!.env.example
+.vercel/
+.publish-projetos/
