@@ -151,7 +151,7 @@ export function validateState(s) {
   for(const x of s.subscriptions)if(!text(x.name,100)||!integer(x.amount)||x.amount<=0||!['month','year'].includes(x.cycle)||!validDate(x.nextDate))throw new Error('Assinatura inválida.');
   for(const a of s.agents)if(!text(a.name,100)||!text(a.description,600)||!['summary','budget','duplicates'].includes(a.kind)||!['daily','weekly','monthly'].includes(a.frequency)||!integer(a.limit)||a.limit<0)throw new Error('Agente inválido.');
   for(const i of s.investments)if(!text(i.name,100)||!text(i.kind,80)||!integer(i.amount)||i.amount<0)throw new Error('Investimento inválido.');
-  for(const m of s.messages)if(!['user','assistant'].includes(m.role)||!text(m.content,10000)||!text(m.id,100))throw new Error('Mensagem inválida.');
+  for(const m of s.messages)if(!['user','assistant'].includes(m.role)||!text(m.content,10000)||!text(m.id,100)||m.source!==undefined&&!['local','gemini'].includes(m.source)||m.month!==undefined&&!validMonth(m.month)||m.notice!=null&&!text(m.notice,500))throw new Error('Mensagem inválida.');
   if(!s.profile||!text(s.profile.name,80)||!integer(s.profile.monthlyGoal)||s.profile.monthlyGoal<0)throw new Error('Perfil inválido.');
   if(s.profile.salary!==undefined&&(!integer(s.profile.salary)||s.profile.salary<0))throw new Error('Salário inválido.');
   if(s.profile.palette!==undefined&&!['green','rose','violet','blue','amber','custom'].includes(s.profile.palette))throw new Error('Paleta inválida.');

@@ -11,7 +11,7 @@ try {
   $target = Join-Path $checkout 'financas-do-max'
   if (Test-Path -LiteralPath $target) { throw 'O repositório já contém financas-do-max. Revise antes de copiar.' }
   New-Item -ItemType Directory -Path $target | Out-Null
-  $files = @('dist','tests','docs','api','scripts','package.json','package-lock.json','server.mjs','storage.mjs','auth.mjs','http-api.mjs','vercel.json','README.md','.gitignore','.env.example')
+  $files = @('dist','tests','docs','api','scripts','package.json','package-lock.json','server.mjs','storage.mjs','auth.mjs','http-api.mjs','max-ai.mjs','vercel.json','README.md','.gitignore','.env.example')
   foreach ($entry in $files) { Copy-Item -LiteralPath (Join-Path $sourceRoot $entry) -Destination $target -Recurse }
   git add -- financas-do-max
   if ($LASTEXITCODE -ne 0) { throw 'Falha ao preparar os arquivos.' }

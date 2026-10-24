@@ -1,6 +1,8 @@
 import {createAuth} from './auth.mjs';
 import {createStore} from './storage.mjs';
-export function createApi(env=process.env,{auth,storeFactory=createStore}={}){
+import {createMaxAI} from './max-ai.mjs';
+import {validMonth} from './dist/billing.mjs';
+export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=createMaxAI(env)}={}){
   const production=env.VERCEL==='1'||env.NODE_ENV==='production';
   const allowed=new Set((env.APP_ORIGIN||'').split(',').filter(Boolean));
   auth??=createAuth({url:env.NEON_AUTH_URL,secret:env.SESSION_SECRET,secure:production});
@@ -21,6 +23,14 @@ export function createApi(env=process.env,{auth,storeFactory=createStore}={}){
       if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie',await auth.logout(req));return send(200,{ok:true});}
       const user=await auth.user(req);if(!user?.id)return send(401,{error:'Entre na sua conta para continuar.'});
       if(path==='/api/session'&&req.method==='GET')return send(200,{user:{id:user.id,name:user.name,email:user.email}});
+      if(path==='/api/chat/status'&&req.method==='GET')return send(200,maxAI.status());
+      if(path==='/api/chat'&&req.method==='POST'){
+        const input=await body(req);
+        if(!input||typeof input.message!=='string'||!input.message.trim()||input.message.length>2000||!validMonth(input.month)||!Number.isSafeInteger(input.revision)||input.revision<1)return send(400,{error:'Informe uma pergunta de até 2.000 caracteres e um mês válido.'});
+        const snapshot=await storeFactory(env.DATABASE_URL,'user:'+user.id).read();
+        if(!snapshot.state||snapshot.revision!==input.revision)return send(409,{error:'Os dados mudaram. Aguarde a sincronização ou recarregue antes de consultar o Max.'});
+        return send(200,await maxAI.reply({state:snapshot.state,month:input.month,message:input.message.trim(),userId:user.id}));
+      }
       if(path!=='/api/state')return send(404,{error:'Rota não encontrada.'});
       const store=storeFactory(env.DATABASE_URL,'user:'+user.id);
       if(req.method==='GET')return send(200,await store.read());

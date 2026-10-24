@@ -15,6 +15,7 @@ export function createRemoteStorage({fetcher=fetch,onStatus=()=>{}}={}){
       tail=tail.then(async()=>{if(failed)throw new Error('Sincronização interrompida.');const result=await request('PUT',{state:snapshot,revision});revision=result.revision;}).catch(err=>{failed=true;onStatus('Falha na sincronização — exporte um backup e recarregue');throw err;}).finally(()=>{pending--;if(!failed&&!pending)onStatus('Salvo no Neon');});
       return tail;
     },
+    async flush(){await tail;if(failed)throw new Error('Sincronização interrompida.');return revision;},
     get pending(){return pending;}
   };
 }

@@ -16,3 +16,9 @@ test('conflito bloqueia gravações seguintes sem sobrescrever o banco',async()=
   const remote=createRemoteStorage({fetcher:async(url,opts)=>{if(opts.method==='GET')return Response.json({revision:1,state:{}});writes++;return Response.json({error:'Conflito'},{status:409});}});
   await remote.load();await assert.rejects(remote.save({}),/Conflito/);await assert.rejects(remote.save({}),/interrompida/);assert.equal(writes,1);
 });
+
+test('flush aguarda a gravação e fornece revisão atual para análise do Max',async()=>{
+  let release;const remote=createRemoteStorage({fetcher:async(url,opts)=>opts.method==='GET'?Response.json({revision:7,state:{}}):new Promise(resolve=>{release=()=>resolve(Response.json({revision:8}));})});
+  await remote.load();const save=remote.save({value:1});let finished=false;const flush=remote.flush().then(revision=>{finished=true;return revision;});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(finished,false);release();await save;assert.equal(await flush,8);
+});
