@@ -9,7 +9,7 @@
     "check:server": "node --check auth.mjs && node --check http-api.mjs && node --check storage.mjs && node --check api/index.mjs && node --check dist/auth-ui.mjs && node --check dist/remote-storage.mjs",
     "start": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check dist/app.mjs && node --check dist/domain.mjs && node --check dist/billing.mjs && node --check dist/csv-import.mjs && node --check dist/recurrences.mjs && node --check dist/audit.mjs && node --check dist/financial-operations.mjs && node --check dist/subscription-calendar.mjs && node --check dist/ui-recurrences.mjs && node --check dist/ui-subscription-calendar.mjs && node --check dist/ui-financial-operations.mjs && node --check server.mjs"
+    "check": "node --check dist/app.mjs && node --check dist/appearance.mjs && node --check dist/input-masks.mjs && node --check dist/domain.mjs && node --check dist/billing.mjs && node --check dist/csv-import.mjs && node --check dist/recurrences.mjs && node --check dist/audit.mjs && node --check dist/financial-operations.mjs && node --check dist/subscription-calendar.mjs && node --check dist/ui-recurrences.mjs && node --check dist/ui-subscription-calendar.mjs && node --check dist/ui-financial-operations.mjs && node --check server.mjs"
   },
   "engines": {
     "node": ">=22"

@@ -107,6 +107,7 @@ export function createRecurrenceUI(ctx) {
     const frequencyChoices = FREQUENCIES.filter(([value]) => !linked || ['month', 'year'].includes(value));
     const availableCards = state.cards.filter(card => card.accountId === accountId);
     ctx.openModal(existing ? 'Editar recorrência' : linked ? 'Programar assinatura' : 'Nova recorrência', `<form id="recurrence-form">
+      ${!existing&&!linked&&state.profile.salary>0?`<button class="btn" type="button" id="use-profile-salary">Usar salário do perfil · ${currency(state.profile.salary)}</button><p class="hint">Preenche uma receita mensal. Confira a conta e a data de recebimento antes de salvar.</p>`:''}
       ${field('Descrição','name',draft.name,'text','required maxlength="100"')}
       <div class="form-grid">
         ${selectField('Tipo', 'type', (linked ? [['expense', 'Despesa']] : [['expense', 'Despesa'], ['income', 'Receita']]).map(([value, label]) => `<option value="${value}" ${selected(value, draft.type)}>${label}</option>`).join(''), linked ? 'disabled' : '')}
@@ -161,6 +162,11 @@ export function createRecurrenceUI(ctx) {
         ctx.closeModal();
       }});
     const formNode = $('#recurrence-form');
+    formNode?.querySelector('#use-profile-salary')?.addEventListener('click',()=>{
+      const set=(name,value)=>{const input=formNode.querySelector(`[name="${name}"]`);if(input)input.value=value;};
+      set('name','Salário');set('type','income');set('amount',currency(ctx.getState().profile.salary));set('frequency','month');set('interval','1');
+      formNode.querySelector('[name="type"]')?.dispatchEvent(new Event('change'));
+    });
     const refreshCards = () => {
       const type = formNode?.querySelector('[name="type"]')?.value;
       const selectedAccount = formNode?.querySelector('[name="accountId"]')?.value;

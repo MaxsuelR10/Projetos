@@ -13,9 +13,9 @@ const FIELDS = {
   investments: ['id', 'name', 'kind', 'amount'],
   recurrences: ['id', 'name', 'type', 'amount', 'accountId', 'categoryId', 'cardId', 'frequency', 'interval', 'startDate', 'endDate', 'occurrencesLimit', 'occurrencesGenerated', 'nextOccurrenceDate', 'status', 'lastGeneratedAt', 'subscriptionId'],
   agents: ['id', 'name', 'description', 'kind', 'frequency', 'active', 'limit', 'categoryId'],
-  profile: ['name', 'monthlyGoal'],
+  profile: ['name', 'monthlyGoal', 'salary', 'palette', 'surface', 'customColor'],
 };
-const NUMBERS = new Set(['openingBalance', 'budget', 'amount', 'installmentCount', 'limit', 'closingDay', 'dueDay', 'totalAmount', 'paidAmount', 'count', 'paid', 'interval', 'occurrencesLimit', 'occurrencesGenerated', 'recurrenceOccurrence', 'monthlyGoal']);
+const NUMBERS = new Set(['openingBalance', 'budget', 'amount', 'installmentCount', 'limit', 'closingDay', 'dueDay', 'totalAmount', 'paidAmount', 'count', 'paid', 'interval', 'occurrencesLimit', 'occurrencesGenerated', 'recurrenceOccurrence', 'monthlyGoal', 'salary']);
 const BOOLEANS = new Set(['hidden', 'active', 'isSubscription']);
 const NULLABLE = new Set(['endDate', 'occurrencesLimit', 'lastGeneratedAt', 'settledAt']);
 const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);

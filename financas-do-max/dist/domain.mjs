@@ -153,6 +153,10 @@ export function validateState(s) {
   for(const i of s.investments)if(!text(i.name,100)||!text(i.kind,80)||!integer(i.amount)||i.amount<0)throw new Error('Investimento inválido.');
   for(const m of s.messages)if(!['user','assistant'].includes(m.role)||!text(m.content,10000)||!text(m.id,100))throw new Error('Mensagem inválida.');
   if(!s.profile||!text(s.profile.name,80)||!integer(s.profile.monthlyGoal)||s.profile.monthlyGoal<0)throw new Error('Perfil inválido.');
+  if(s.profile.salary!==undefined&&(!integer(s.profile.salary)||s.profile.salary<0))throw new Error('Salário inválido.');
+  if(s.profile.palette!==undefined&&!['green','rose','violet','blue','amber','custom'].includes(s.profile.palette))throw new Error('Paleta inválida.');
+  if(s.profile.surface!==undefined&&!['dark','light'].includes(s.profile.surface))throw new Error('Base de cor inválida.');
+  if(s.profile.customColor!==undefined&&!/^#[0-9a-f]{6}$/i.test(s.profile.customColor))throw new Error('Cor personalizada inválida.');
   const paidMonths=new Set(),paymentIds=new Set();
   for(const payment of s.invoicePayments||[]){
     const card=s.cards.find(c=>c.id===payment.cardId),transaction=s.transactions.find(t=>t.id===payment.id);
