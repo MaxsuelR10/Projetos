@@ -27,8 +27,8 @@ html[data-palette] .spending-chart path[stroke="#6fe0b2"]{stroke:var(--green)}
 html[data-palette] .spending-chart stop{stop-color:var(--accent-fill)}
 html[data-palette] .spending-chart text{fill:var(--muted)}
 html[data-palette] .spending-chart line{stroke:var(--border)}
-.theme-logo{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--green-dim);color:var(--green);border:1px solid var(--border);border-radius:28%;box-shadow:0 6px 28px var(--shadow-color)}
-.theme-logo svg{width:72%;height:72%}
+.theme-logo{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;background:var(--green-dim) url('./finance-icon.png') center/118% 118% no-repeat;color:transparent;border:1px solid var(--border);border-radius:28%;box-shadow:0 6px 28px var(--shadow-color)}
+.theme-logo svg{display:none}
 .palette-preview{display:flex;gap:8px;margin:0 0 18px}
 .palette-preview i{display:block;width:48px;height:30px;border-radius:8px;border:1px solid var(--border)}
 .palette-preview i:nth-child(1){background:var(--bg)}
