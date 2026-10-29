@@ -357,7 +357,7 @@ const financeContext={getState:()=>state,getMonth:()=>month,setMonth:value=>{mon
 const recurrenceUI=createRecurrenceUI(financeContext);
 const subscriptionCalendarUI=createSubscriptionCalendarUI(financeContext);
 const operationsUI=createFinancialOperationsUI(financeContext);
-const maxChat=createMaxChat({getState:()=>state,getMonth:()=>month,setMonth:value=>{month=value;},commit,remote,render,e,icon,$});
+const maxChat=createMaxChat({getState:()=>state,getMonth:()=>month,setMonth:value=>{month=value;},commit,remote,onSaved:async snapshot=>{const next=validateState(snapshot.state);remote.acceptSnapshot(snapshot);state=next;localStorage.setItem(STORE_KEY,JSON.stringify(state));},render,e,icon,$});
 await maxChat.init();
 alerts=evaluateAgents(state,month);
 render();

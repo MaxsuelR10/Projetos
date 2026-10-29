@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+// Maps the existing JSONB storage without converting financial records.
+model FinanceState {
+  workspaceId String @id @map("workspace_id")
+  revision Int
+  payload Json @db.JsonB
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  @@map("financas_max_state")
+}
+model AssistantOperation {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  requestId String @map("request_id")
+  inputHash String @map("input_hash")
+  tokenHash String @unique @map("token_hash")
+  token String
+  revision Int
+  operation Json @db.JsonB
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  status String @default("pending")
+  result Json? @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([userId, requestId])
+  @@index([expiresAt])
+  @@map("financas_max_assistant_operations")
+}

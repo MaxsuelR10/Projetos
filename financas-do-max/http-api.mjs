@@ -2,7 +2,10 @@ import {createAuth} from './auth.mjs';
 import {createStore} from './storage.mjs';
 import {createMaxAI} from './max-ai.mjs';
 import {validMonth} from './dist/billing.mjs';
-export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=createMaxAI(env)}={}){
+import {createAssistant} from './assistant-service.mjs';
+import {createAssistantRepository} from './assistant-repository.mjs';
+export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=createMaxAI(env),assistant}={}){
+  assistant??=createAssistant({repository:createAssistantRepository(env.DATABASE_URL),env});
   const production=env.VERCEL==='1'||env.NODE_ENV==='production';
   const allowed=new Set((env.APP_ORIGIN||'').split(',').filter(Boolean));
   auth??=createAuth({url:env.NEON_AUTH_URL,secret:env.SESSION_SECRET,secure:production});
@@ -22,6 +25,13 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       }
       if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie',await auth.logout(req));return send(200,{ok:true});}
       const user=await auth.user(req);if(!user?.id)return send(401,{error:'Entre na sua conta para continuar.'});
+      if(path==='/api/assistant/conversations/latest'&&req.method==='GET'){
+        const saved=await storeFactory(env.DATABASE_URL,'user:'+user.id).read();
+        return send(200,{messages:saved.state?.messages||[]});
+      }
+      if(path==='/api/assistant/chat'&&req.method==='POST')return send(200,await assistant.chat(user.id,await body(req)));
+      if(path==='/api/assistant/confirm'&&req.method==='POST')return send(200,await assistant.confirm(user.id,(await body(req))?.token));
+      if(path==='/api/assistant/cancel'&&req.method==='POST')return send(200,await assistant.cancel(user.id,(await body(req))?.token));
       if(path==='/api/session'&&req.method==='GET')return send(200,{user:{id:user.id,name:user.name,email:user.email}});
       if(path==='/api/chat/status'&&req.method==='GET')return send(200,maxAI.status());
       if(path==='/api/chat'&&req.method==='POST'){

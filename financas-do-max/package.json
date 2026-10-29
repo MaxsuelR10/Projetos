@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev:assistant": "node scripts/assistant-sandbox.mjs",
+    "prisma:generate": "prisma generate",
+    "postinstall": "prisma generate",
     "dev": "node server.mjs",
     "test:neon": "node scripts/test-neon.mjs",
     "check:server": "node --check auth.mjs && node --check http-api.mjs && node --check max-ai.mjs && node --check storage.mjs && node --check api/index.mjs && node --check dist/auth-ui.mjs && node --check dist/remote-storage.mjs && node --check dist/ui-max-chat.mjs && node --check dist/max-financial-context.mjs",
@@ -17,6 +20,12 @@
   "dependencies": {
     "@ai-sdk/google": "^4.0.104",
     "@neondatabase/serverless": "^1.2.0",
-    "ai": "^7.0.152"
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
+    "ai": "^7.0.152",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.1"
   }
 }

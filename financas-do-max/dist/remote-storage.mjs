@@ -8,6 +8,7 @@ export function createRemoteStorage({fetcher=fetch,onStatus=()=>{}}={}){
     return result;
   }
   return {
+    acceptSnapshot(snapshot){if(pending||failed)throw new Error('Há alterações locais não sincronizadas. Exporte o backup e recarregue.');revision=snapshot.revision;onStatus('Salvo no Neon');},
     async load(){const result=await request('GET');revision=result.revision;onStatus('Neon conectado');return result.state;},
     save(state){
       if(failed) return Promise.reject(new Error('Sincronização interrompida. Exporte o backup local e recarregue.'));
