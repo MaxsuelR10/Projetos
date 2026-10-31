@@ -30,4 +30,4 @@ No navegador, em 390×844 e 360×800: digitação tecla a tecla dos dias 31/10, 
 
 O recebimento no sistema operacional de um telefone físico, com o aplicativo fechado, depende de ativar a permissão naquele aparelho e usar o botão de teste. Essa entrega física não foi validada pelo ambiente de desenvolvimento.
 
-A publicação usa um snapshot dos arquivos locais no projeto Vercel existente. O código local deve ser levado ao GitHub antes de futuros deploys pela branch principal, para que esses deploys preservem as correções.
+A publicação usa um snapshot dos arquivos testados no projeto Vercel existente, deployment `dpl_BGRubpysePUyiRZe72NXf2fBrKfR`, confirmado como READY e associado a `https://app-financas-kappa-khaki.vercel.app`. O código foi enviado à branch `codex/mobile-cards-notifications` de `MaxsuelR10/Projetos` após autorização explícita. Essa branch deve ser incorporada à principal antes de futuros deploys de main, para preservar as correções.
