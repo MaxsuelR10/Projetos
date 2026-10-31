@@ -1,0 +1,4 @@
+.notification-list{display:grid;gap:12px}.notification-item{display:flex;flex-direction:column;gap:10px;text-decoration:none;color:var(--text);overflow-wrap:anywhere}.notification-item span{color:var(--muted);line-height:1.6}
+@media(max-width:1100px){.top-actions .notification-btn{display:inline-flex;min-width:44px;min-height:44px}}
+@media(max-width:680px){.top-actions .demo-badge{display:none}}
+@media(max-width:680px){.modal{max-height:calc(100dvh - 20px)}.modal input,.modal select,.settings-panel input{font-size:16px;min-height:44px}.settings-buttons .btn{min-height:44px;white-space:normal}.settings-panel{min-width:0}.card-digits{font-size:18px}}

@@ -4,7 +4,9 @@ import {createMaxAI} from './max-ai.mjs';
 import {validMonth} from './dist/billing.mjs';
 import {createAssistant} from './assistant-service.mjs';
 import {createAssistantRepository} from './assistant-repository.mjs';
-export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=createMaxAI(env),assistant}={}){
+import {createPushService,cronAuthorized} from './push-service.mjs';
+export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=createMaxAI(env),assistant,push}={}){
+  push??=createPushService(env,{readState:async userId=>(await storeFactory(env.DATABASE_URL,'user:'+userId).read()).state});
   assistant??=createAssistant({repository:createAssistantRepository(env.DATABASE_URL),env});
   const production=env.VERCEL==='1'||env.NODE_ENV==='production';
   const allowed=new Set((env.APP_ORIGIN||'').split(',').filter(Boolean));
@@ -20,17 +22,30 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json'))return send(415,{error:'JSON obrigatório.'});
       if(req.method!=='GET'&&!req.headers.origin)return send(403,{error:'Origem obrigatória.'});
       const path=new URL(req.url,'http://localhost').pathname;
+      if(path==='/api/notifications/cron'&&req.method==='GET'){
+        if(!cronAuthorized(req.headers.authorization,env.CRON_SECRET))return send(401,{error:'Não autorizado.'});
+        const result=await push.run();return send(result.failed?503:200,result);
+      }
       if(['/api/login','/api/signup'].includes(path)&&req.method==='POST'){
         res.setHeader('Set-Cookie',await auth.login(await body(req),path==='/api/signup',req.headers.origin));return send(200,{ok:true});
       }
       if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie',await auth.logout(req));return send(200,{ok:true});}
       const user=await auth.user(req);if(!user?.id)return send(401,{error:'Entre na sua conta para continuar.'});
+      if(path==='/api/notifications/status'&&req.method==='GET')return send(200,push.status());
+      if(path==='/api/notifications/subscribe'&&req.method==='POST')return send(200,await push.subscribe(user.id,await body(req)));
+      if(path==='/api/notifications/unsubscribe'&&req.method==='POST')return send(200,await push.remove(user.id,(await body(req))?.endpoint));
+      if(path==='/api/notifications/test'&&req.method==='POST')return send(200,await push.test(user.id,(await body(req))?.endpoint));
       if(path==='/api/assistant/conversations/latest'&&req.method==='GET'){
         const saved=await storeFactory(env.DATABASE_URL,'user:'+user.id).read();
         return send(200,{messages:saved.state?.messages||[]});
       }
       if(path==='/api/assistant/chat'&&req.method==='POST')return send(200,await assistant.chat(user.id,await body(req)));
-      if(path==='/api/assistant/confirm'&&req.method==='POST')return send(200,await assistant.confirm(user.id,(await body(req))?.token));
+      if(path==='/api/assistant/confirm'&&req.method==='POST'){
+        const previous=(await storeFactory(env.DATABASE_URL,'user:'+user.id).read()).state;
+        const result=await assistant.confirm(user.id,(await body(req))?.token);
+        try{await push.dispatch(user.id,result.state,{previous});}catch{/* Daily check retries; a push failure must not undo a financial save. */}
+        return send(200,result);
+      }
       if(path==='/api/assistant/cancel'&&req.method==='POST')return send(200,await assistant.cancel(user.id,(await body(req))?.token));
       if(path==='/api/session'&&req.method==='GET')return send(200,{user:{id:user.id,name:user.name,email:user.email}});
       if(path==='/api/chat/status'&&req.method==='GET')return send(200,maxAI.status());
@@ -46,7 +61,12 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       if(req.method==='GET')return send(200,await store.read());
       if(req.method!=='PUT')return send(405,{error:'Método não permitido.'});
       const input=await body(req);
-      try{return send(200,await store.write(input.state,input.revision));}catch(err){if(!err.status&&!err.code)err.status=400;throw err;}
+      try{
+        const previous=push.status().configured?(await store.read()).state:null;
+        const result=await store.write(input.state,input.revision);
+        try{await push.dispatch(user.id,input.state,{previous});}catch{/* Scheduled check retries later. */}
+        return send(200,result);
+      }catch(err){if(!err.status&&!err.code)err.status=400;throw err;}
     }catch(err){send(err.status||503,{error:err.status?err.message:'Serviço indisponível. Tente novamente.'});}
   };
 }

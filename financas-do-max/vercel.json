@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "crons": [{"path":"/api/notifications/cron","schedule":"0 12 * * *"}],
   "builds": [
     {"src": "api/index.mjs", "use": "@vercel/node"},
     {"src": "dist/**", "use": "@vercel/static"}

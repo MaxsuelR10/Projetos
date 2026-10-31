@@ -13,7 +13,7 @@ export function formatCurrencyMask(value){
 
 export function digitsOnly(value,max=0){
   const digits=String(value??'').replace(/\D/g,'');
-  return max?digits.slice(0,max):digits;
+  return Number.isInteger(max)&&max>0?digits.slice(0,max):digits;
 }
 
 export function applyInputMasks(root=document){

@@ -1,0 +1,26 @@
+// Run only on an isolated Neon branch. Receives its connection URL via stdin.
+import assert from 'node:assert/strict';
+import {createInterface} from 'node:readline/promises';
+import {randomUUID} from 'node:crypto';
+import {createPushRepository,subscriptionId} from '../push-repository.mjs';
+process.stdin.setRawMode?.(true);
+const reader=createInterface({input:process.stdin,terminal:false});
+console.log('Ready for isolated branch connection on stdin (hidden).');
+const url=await new Promise(resolve=>reader.once('line',resolve));reader.close();
+const repo=createPushRepository(url),user='push-test:'+randomUUID();
+const subscription={endpoint:'https://fcm.googleapis.com/test/'+randomUUID(),keys:{p256dh:'test',auth:'test'}};
+const id=subscriptionId(subscription.endpoint);
+await repo.subscribe(user,subscription);
+assert.equal((await repo.subscriptions(user)).length,1);
+assert.equal((await repo.subscriptions(user+'-other')).length,0);
+const claims=await Promise.all([repo.claim(id,'new-bill:test'),repo.claim(id,'new-bill:test')]);
+assert.equal(claims.filter(Boolean).length,1);
+await repo.release(id,'new-bill:test',claims.find(Boolean));
+assert.equal((await repo.pendingKeys(id))[0].event_key,'new-bill:test');
+const retry=await repo.claim(id,'new-bill:test');assert.ok(retry);
+await repo.finish(id,'new-bill:test',retry);
+assert.equal(await repo.claim(id,'new-bill:test'),null);
+assert.equal((await repo.pendingKeys(id)).length,0);
+const high=await repo.claim(id,'budget:monthly:2026-10:100');await repo.finish(id,'budget:monthly:2026-10:100',high);
+assert.equal(await repo.claim(id,'budget:monthly:2026-10:80'),null);
+console.log('Push database: isolation, concurrent claims, retry, deduplication and threshold escalation passed. Test data stays only on the expiring branch.');

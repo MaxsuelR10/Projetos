@@ -9,10 +9,10 @@
     "postinstall": "prisma generate",
     "dev": "node server.mjs",
     "test:neon": "node scripts/test-neon.mjs",
-    "check:server": "node --check auth.mjs && node --check http-api.mjs && node --check max-ai.mjs && node --check storage.mjs && node --check api/index.mjs && node --check dist/auth-ui.mjs && node --check dist/remote-storage.mjs && node --check dist/ui-max-chat.mjs && node --check dist/max-financial-context.mjs",
+    "check:server": "node --check auth.mjs && node --check http-api.mjs && node --check max-ai.mjs && node --check storage.mjs && node --check api/index.mjs && node --check dist/auth-ui.mjs && node --check dist/remote-storage.mjs && node --check dist/ui-max-chat.mjs && node --check dist/max-financial-context.mjs && node --check push-service.mjs && node --check push-repository.mjs",
     "start": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check dist/app.mjs && node --check dist/appearance.mjs && node --check dist/input-masks.mjs && node --check dist/domain.mjs && node --check dist/billing.mjs && node --check dist/csv-import.mjs && node --check dist/recurrences.mjs && node --check dist/audit.mjs && node --check dist/financial-operations.mjs && node --check dist/subscription-calendar.mjs && node --check dist/ui-recurrences.mjs && node --check dist/ui-subscription-calendar.mjs && node --check dist/ui-financial-operations.mjs && node --check server.mjs"
+    "check": "node --check dist/app.mjs && node --check dist/appearance.mjs && node --check dist/input-masks.mjs && node --check dist/domain.mjs && node --check dist/billing.mjs && node --check dist/csv-import.mjs && node --check dist/recurrences.mjs && node --check dist/audit.mjs && node --check dist/financial-operations.mjs && node --check dist/subscription-calendar.mjs && node --check dist/ui-recurrences.mjs && node --check dist/ui-subscription-calendar.mjs && node --check dist/ui-financial-operations.mjs && node --check server.mjs && node --check dist/notification-rules.mjs && node --check dist/ui-notifications.mjs && node --check dist/sw.js"
   },
   "engines": {
     "node": ">=22"
@@ -23,6 +23,7 @@
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "ai": "^7.0.152",
+    "web-push": "^3.6.7",
     "zod": "^4.6.6"
   },
   "devDependencies": {

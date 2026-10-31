@@ -12,7 +12,7 @@ test('valores brasileiros e valores decimais são convertidos para centavos inte
 test('o exemplo valida, contém meses diferentes e não tem transações bancárias reais',()=>{
   const s=seedState('2026-10-21');assert.equal(validateState(s),s);
   assert.ok(monthlyRows(s,'2026-10').length>0);assert.ok(monthlyRows(s,'2026-09').length>0);
-  assert.equal(s.accounts[0].name,'Banco Aurora');assert.equal(s.cards[0].last4,'4242');
+  assert.equal(s.accounts[0].name,'Banco Aurora');assert.equal(s.cards[0].last4,undefined);
 });
 test('transferências não inflam receitas e despesas; respeitam os dois saldos',()=>{
   const s=seedState('2026-10-21');s.transactions=[];

@@ -14,7 +14,7 @@ const client=memoryPrisma({sandbox:state}),repository=createAssistantRepository(
 const store={read:()=>repository.read('sandbox'),async write(state,revision){validateState(state);const result=await client.financeState.updateMany({where:{workspaceId:'user:sandbox',revision},data:{payload:state}});if(!result.count)throw Object.assign(new Error('Os dados mudaram. Recarregue.'),{status:409});return {revision:revision+1};}};
 const api=createApi({},{auth:{user:async()=>({id:'sandbox',name:'Teste local',email:'teste@local.invalid'})},assistant:createAssistant({repository,env:{}}),storeFactory:()=>store});
 const root=fileURLToPath(new URL('../dist',import.meta.url));
-const mime={'.html':'text/html; charset=utf-8','.css':'text/css','.mjs':'text/javascript','.svg':'image/svg+xml','.png':'image/png'};
+const mime={'.html':'text/html; charset=utf-8','.css':'text/css','.mjs':'text/javascript','.js':'text/javascript','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png'};
 createServer(async(req,res)=>{
   if(req.url.startsWith('/api/'))return api(req,res);
   try{const name=new URL(req.url,'http://localhost').pathname,path=resolve(root,'.'+(name==='/'?'/index.html':decodeURIComponent(name)));if(!path.startsWith(root+sep))throw new Error();const data=await readFile(path);res.writeHead(200,{'Content-Type':mime[extname(path)]||'application/octet-stream','Cache-Control':'no-store'});res.end(data);}catch{res.writeHead(404);res.end();}

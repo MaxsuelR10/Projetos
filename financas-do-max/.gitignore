@@ -1,4 +1,7 @@
 node_modules/
+.npm-cache/
+test-results.txt
+check-results.txt
 .sites/
 .openai/*.tar.gz
 *.log
