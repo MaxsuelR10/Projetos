@@ -282,9 +282,9 @@ function download(name,text,mime){const blob=new Blob([text],{type:mime}),url=UR
 function backup(){download(`financas-do-max-${localDate()}.json`,JSON.stringify(state,null,2),'application/json');toast('Backup exportado.');}
 function importModal(){
   openModal('Importar extrato CSV', `<p class="muted">O arquivo é analisado somente neste navegador. Revise os registros e o impacto no saldo antes de confirmar.</p>
-    <div class="notice">Colunas obrigatórias: <strong>data;descricao;valor</strong>. Opcionais: tipo e categoria. Sem tipo explícito, valores negativos são despesas e positivos são receitas.</div>
+    <div class="notice">Aceita CSV de conta e fatura Nubank (date, title, amount). Para faturas selecione o cartão e o mês do vencimento. Revise as categorias e possíveis duplicatas antes de confirmar.</div>
     <form id="import-form">
-      ${selectField('Conta de destino','accountId',options(state.accounts,account||state.accounts[0]?.id))}
+      ${selectField('Conta de destino','accountId',options(state.accounts,account||state.accounts[0]?.id))}${selectField('Cartão da fatura (opcional)','importCardId','<option value="">Extrato da conta</option>'+options(state.cards,''))}${field('Mês de vencimento da fatura','invoiceMonth',month,'month')}
       <label class="file-drop">${icon('upload',28)}<strong>Escolha seu extrato CSV</strong><span>Até 5 MB / 10.000 registros · datas AAAA-MM-DD ou DD/MM/AAAA</span><input type="file" name="file" accept=".csv,text/csv" required aria-label="Arquivo CSV"></label>
       <p id="csv-import-error" class="form-error" role="alert"></p><div id="import-preview"></div>
       <div class="form-footer">${button('Baixar modelo','csv-template','download','btn','type="button"')}<button type="submit" class="btn primary">Analisar extrato</button></div>
@@ -297,19 +297,21 @@ function importModal(){
   const summaryMarkup=()=> {
     const summary=csvSelectionSummary(preview,selected);
     submit.textContent=`Confirmar importação (${summary.count})`;submit.disabled=!summary.count;
-    return `<div class="csv-summary" role="status"><span>Saldo registrado antes<strong>${currency(summary.balanceBefore)}</strong></span><span>Entradas selecionadas<strong>${currency(summary.income)}</strong></span><span>Saídas selecionadas<strong>${currency(summary.expense)}</strong></span><span>Saldo após importação<strong>${currency(summary.balanceAfter)}</strong></span></div><p class="hint">${summary.count} registro(s) selecionado(s). ${preview.duplicateCount} possível(is) duplicata(s) ignorada(s). A projeção não consulta o banco e considera os registros selecionados como efetivados.</p>`;
+    return `<div class="csv-summary" role="status"><span>Saldo registrado antes<strong>${currency(summary.balanceBefore)}</strong></span><span>Entradas selecionadas<strong>${currency(summary.income)}</strong></span><span>Saídas selecionadas<strong>${currency(summary.expense)}</strong></span><span>Saldo após importação<strong>${currency(summary.balanceAfter)}</strong></span></div><p class="hint">${summary.count} registro(s) selecionado(s). ${records?.skippedPayments||0} pagamento(s) de fatura ignorado(s). ${preview.duplicateCount} possível(is) duplicata(s) ignorada(s). ${preview.cardId?'Compras no cartão não alteram o saldo da conta; confira o mês da fatura.':'A projeção considera os registros selecionados como efetivados.'}</p>`;
   };
   const renderSummary=()=>{$('#csv-summary').innerHTML=summaryMarkup();};
   const renderPreview=()=> {
     const pages=Math.ceil(preview.rows.length/pageSize), start=previewPage*pageSize;
     previewNode.innerHTML=`<div id="csv-summary">${summaryMarkup()}</div>
       <div class="csv-review-actions"><button type="button" class="btn small" data-csv-select="all">Selecionar novos</button><button type="button" class="btn small" data-csv-select="none">Limpar seleção</button></div>
-      <div class="csv-table-scroll"><table class="csv-review-table"><caption>Prévia do extrato: nenhum lançamento foi salvo</caption><thead><tr><th scope="col">Importar</th><th scope="col">Data / descrição</th><th scope="col">Categoria</th><th scope="col">Valor</th><th scope="col">Situação</th></tr></thead><tbody>${preview.rows.slice(start,start+pageSize).map(row=>`<tr class="${row.duplicate?'csv-duplicate':''}"><td><input type="checkbox" data-csv-row="${row.index}" aria-label="Importar registro ${row.index+1}: ${e(row.description)}" ${selected.has(row.index)?'checked':''} ${row.duplicate?'disabled':''}></td><td><small>${e(row.date.split('-').reverse().join('/'))}</small><strong>${e(row.description)}</strong></td><td>${e(state.categories.find(category=>category.id===row.categoryId)?.name||'Outros')}</td><td>${row.type==='expense'?'−':'+'}${currency(row.amount)}</td><td>${row.duplicate?'Possível duplicata':'Novo'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="csv-table-scroll"><table class="csv-review-table"><caption>Prévia do extrato: nenhum lançamento foi salvo</caption><thead><tr><th scope="col">Importar</th><th scope="col">Data / descrição</th><th scope="col">Categoria</th><th scope="col">Valor</th><th scope="col">Situação</th></tr></thead><tbody>${preview.rows.slice(start,start+pageSize).map(row=>`<tr class="${row.duplicate?'csv-duplicate':''}"><td><input type="checkbox" data-csv-row="${row.index}" aria-label="Importar registro ${row.index+1}: ${e(row.description)}" ${selected.has(row.index)?'checked':''} ${row.duplicate?'disabled':''}></td><td><small>${e(row.date.split('-').reverse().join('/'))}</small><strong>${e(row.description)}</strong></td><td><select data-csv-category="${row.index}" aria-label="Categoria de ${e(row.description)}">${options(state.categories,row.categoryId)}</select></td><td>${row.type==='expense'?'−':'+'}${currency(row.amount)}</td><td>${row.duplicate?'Possível duplicata':'Novo'}</td></tr>`).join('')}</tbody></table></div>
       <div class="csv-review-actions"><button type="button" class="btn small" data-csv-page="-1" ${previewPage===0?'disabled':''}>Anterior</button><span class="hint">Página ${previewPage+1} de ${pages} · ${preview.rows.length} registros</span><button type="button" class="btn small" data-csv-page="1" ${previewPage===pages-1?'disabled':''}>Próxima</button></div>
       <p class="hint">Duplicatas usam data, descrição, valor, tipo e conta. Se uma repetição for legítima, cadastre-a manualmente. Esta prévia é implementação própria; não reproduz uma API privada do Pierre.</p>`;
   };
   form.addEventListener('change',ev=>{
-    if(ev.target.matches('[name="file"],[name="accountId"]'))reset();
+    if(ev.target.matches('[name="importCardId"]')){const card=state.cards.find(c=>c.id===ev.target.value);if(card)form.elements.accountId.value=card.accountId;}
+    if(ev.target.matches('[name="file"],[name="accountId"],[name="importCardId"],[name="invoiceMonth"]'))reset();
+    if(ev.target.matches('[data-csv-category]')){const index=Number(ev.target.dataset.csvCategory),category=state.categories.find(c=>c.id===ev.target.value);if(category){records[index].categoryName=category.name;preview.rows[index].categoryId=category.id;}}
     if(ev.target.matches('[data-csv-row]')){
       const index=Number(ev.target.dataset.csvRow);
       if(ev.target.checked)selected.add(index);else selected.delete(index);
@@ -324,20 +326,20 @@ function importModal(){
   form.addEventListener('submit',async ev=>{
     ev.preventDefault();errorNode.textContent='';submit.disabled=true;
     try{
-      const accountId=form.elements.accountId.value;
+      const accountId=form.elements.accountId.value, cardId=form.elements.importCardId.value, invoiceMonth=form.elements.invoiceMonth.value;
       if(!preview){
         const file=form.elements.file.files[0];
         if(!file)throw new Error('Selecione um arquivo CSV.');
         if(file.size>5_000_000)throw new Error('O arquivo deve ter até 5 MB.');
         form.elements.file.disabled=true;form.elements.accountId.disabled=true;
-        const parsed=parseCSV(await file.text());
+        const parsed=parseCSV(await file.text(),{cardInvoice:!!cardId});
         if(!form.isConnected)return;
-        const next=previewCsvImport(state,parsed,accountId);
+        const next=previewCsvImport(state,parsed,accountId,cardId,invoiceMonth);
         records=parsed;preview=next;selected=new Set(next.rows.filter(row=>!row.duplicate).map(row=>row.index));
         renderPreview();$('#csv-summary')?.scrollIntoView({block:'nearest'});
       }else{
         let result;
-        commit(current=>{result=buildCsvImport(current,records,accountId,selected);current.transactions.push(...result.transactions);});
+        commit(current=>{result=buildCsvImport(current,records,accountId,selected,uid,cardId,invoiceMonth);current.transactions.push(...result.transactions);});
         closeModal();toast(`${result.transactions.length} registros importados. ${result.duplicateCount} possíveis duplicatas ignoradas.`);
       }
     }catch(error){errorNode.textContent=error.message;}

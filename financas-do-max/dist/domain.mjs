@@ -99,7 +99,7 @@ export function assistantReply(state,month,input) {
   if(/gastei|gastos|resumo|analise|despesas/.test(query))return `Em ${monthName(month)}, você registrou ${rows.length} transações: ${currency(t.expense)} em despesas e ${currency(t.income)} em receitas. Maior categoria: ${cats[0]?.total?`${cats[0].name}, com ${currency(cats[0].total)}`:'nenhuma ainda'}. Posso detalhar categorias, comparar meses, encontrar duplicidades e resumir assinaturas.`;
   return 'Sou seu assistente local: calculo respostas a partir dos dados registrados aqui. Pergunte “Quanto gastei este mês?”, “Compare com o mês passado”, “Quais são minhas assinaturas?” ou “Há cobranças duplicadas?”. Não consulto a internet nem utilizo um modelo de IA nesta versão.';
 }
-export function parseCSV(text) {
+export function parseCSV(text, {cardInvoice=false}={}) {
   if(text.length>5_000_000)throw new Error('O CSV deve ter até 5 MB.');
   text=text.replace(/^\uFEFF/,'');
   const first=text.split(/\r?\n/)[0];const delimiter=first.includes(';')?';':',';
@@ -109,19 +109,22 @@ export function parseCSV(text) {
   if(cell||row.length){row.push(cell.replace(/\r$/,''));rows.push(row);}
   const head=rows.shift()?.map(normalize);
   const col=(...names)=>head?.findIndex(h=>names.includes(h))??-1;
-  const date=col('data','date'),description=col('descricao','description','titulo'),amount=col('valor','amount'),type=col('tipo','type'),category=col('categoria','category');
+  const date=col('data','date'),description=col('descricao','description','titulo','title'),amount=col('valor','amount'),type=col('tipo','type'),category=col('categoria','category');
   if([date,description,amount].some(i=>i<0))throw new Error('O CSV precisa das colunas data, descricao e valor.');
   if(rows.length>10000)throw new Error('Importe até 10.000 linhas por arquivo.');
-  return rows.filter(r=>r.some(x=>x.trim())).map((r,i)=>{
+  let skippedPayments=0;
+  const parsed=rows.filter(r=>r.some(x=>x.trim())).map((r,i)=>{
     let d=r[date].trim();if(/^\d{2}\/\d{2}\/\d{4}$/.test(d))d=d.split('/').reverse().join('-');
     if(!validDate(d))throw new Error(`Data inválida na linha ${i+2}.`);
-    const value=moneyInput(r[amount]); if(!value)throw new Error(`Valor zero na linha ${i+2}.`);
+    const value=moneyInput(r[amount].trim().replace(/^-\s+/, '-')); if(cardInvoice&&value<0&&/^pagamento recebido$/i.test(normalize((r[description]||'').trim()))){skippedPayments++;return null;} if(cardInvoice&&value<0)throw new Error(`A linha ${i+2} contém pagamento ou estorno. Revise essa linha antes de importar; ela não pode ser lançada como compra.`); if(!value)throw new Error(`Valor zero na linha ${i+2}.`);
     const kind=normalize(r[type]||'');
     if(['transferencia','transfer','pagamento_fatura'].includes(kind))throw new Error(`Transferência ou pagamento de fatura na linha ${i+2}: cadastre pela tela correspondente ou restaure um backup JSON.`);
     if(kind&&!['receita','income','credito','despesa','expense','debito'].includes(kind))throw new Error(`Tipo desconhecido na linha ${i+2}. Use receita ou despesa.`);
-    const inferred=['receita','income','credito'].includes(kind)?'income':['despesa','expense','debito'].includes(kind)?'expense':value<0?'expense':'income';
+    const inferred=cardInvoice?'expense':['receita','income','credito'].includes(kind)?'income':['despesa','expense','debito'].includes(kind)?'expense':value<0?'expense':'income';
     return {date:d,description:r[description].trim().slice(0,240),amount:Math.abs(value),type:inferred,categoryName:category>=0?r[category].trim():''};
-  });
+  }).filter(Boolean);
+  parsed.skippedPayments=skippedPayments;
+  return parsed;
 }
 export function csvExport(rows,state) {
   const safe=value=> {let s=String(value??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';};
