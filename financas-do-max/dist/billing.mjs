@@ -23,7 +23,7 @@ export const cycleConfigured = card => isDay(card.closingDay) && isDay(card.dueD
 export function invoiceDates(card, month) {
   if (!cycleConfigured(card)) throw new Error('Informe o dia de fechamento do cartão.');
   const closingMonth = addMonth(month, card.dueDay <= card.closingDay ? -1 : 0);
-  return {closingDate: civilDate(closingMonth, card.closingDay), dueDate: civilDate(month, card.dueDay)};
+  return {startDate: civilDate(addMonth(closingMonth, -1), card.closingDay), closingDate: civilDate(closingMonth, card.closingDay), dueDate: civilDate(month, card.dueDay)};
 }
 export function purchaseInvoiceMonth(card, date, installmentIndex = 0) {
   if (!validCivilDate(date) || !Number.isInteger(installmentIndex) || installmentIndex < 0) throw new Error('Compra ou parcela inválida.');

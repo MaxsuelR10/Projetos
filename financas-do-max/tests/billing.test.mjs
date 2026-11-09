@@ -16,7 +16,7 @@ test('vencimento no mesmo dia ou antes do fechamento desloca a referência',()=>
   assert.equal(purchaseInvoiceMonth({closingDay:3,dueDay:1},'2026-10-02'),'2026-11');
   assert.equal(purchaseInvoiceMonth({closingDay:3,dueDay:1},'2026-10-03'),'2026-12');
   assert.equal(purchaseInvoiceMonth({closingDay:3,dueDay:3},'2026-10-02'),'2026-11');
-  assert.deepEqual(invoiceDates({closingDay:3,dueDay:1},'2026-11'),{closingDate:'2026-10-03',dueDate:'2026-11-01'});
+  assert.deepEqual(invoiceDates({closingDay:3,dueDay:1},'2026-11'),{startDate:'2026-09-03',closingDate:'2026-10-03',dueDate:'2026-11-01'});
 });
 test('fechamento em meses curtos respeita fevereiro normal e bissexto',()=>{
   const card={closingDay:31,dueDay:5};
@@ -108,4 +108,15 @@ test('plano de parcelas vinculado acompanha pagamentos e preserva o centavo fina
 test('CSV de pagamento não pode ser reimportado como despesa comum',()=>{
   const s=fixture();purchase(s);pay(s);const csv=csvExport([s.transactions[1]],s);
   assert.ok(csv.includes('pagamento_fatura'));assert.throws(()=>parseCSV(csv),/fatura/);
+});
+
+test('fatura reúne compras do fechamento anterior até antes do próximo',()=>{
+  const s=fixture(); s.cards[0].closingDay=16; s.cards[0].dueDay=20;
+  purchase(s,{id:'before',date:'2026-09-15',amount:100,installmentCount:1});
+  purchase(s,{id:'start',date:'2026-09-16',amount:200,installmentCount:1});
+  purchase(s,{id:'end',date:'2026-10-15',amount:300,installmentCount:1});
+  purchase(s,{id:'after',date:'2026-10-16',amount:400,installmentCount:1});
+  const invoice=invoiceFor(s,s.cards[0],'2026-10');
+  assert.equal(invoice.total,500); assert.deepEqual(new Set(invoice.items.map(i=>i.transactionId)),new Set(['start','end']));
+  assert.equal(invoice.startDate,'2026-09-16'); assert.equal(invoice.closingDate,'2026-10-16');
 });
