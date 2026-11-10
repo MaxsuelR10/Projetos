@@ -27,7 +27,7 @@ Abra http://127.0.0.1:4173. A porta pode ser alterada com a variável `PORT`.
 - Histórico local com campos antes/depois, limitado a 300 eventos e incluído no backup.
 - Categorias editáveis com orçamento e indicação de estouro.
 - Assistente financeiro local que calcula resumos, compara meses, detalha categorias e encontra possíveis duplicatas.
-- Agentes locais com regras de orçamento, resumo e duplicatas, ativação e execução manual.
+- Resumo com saldo das contas, entradas recebidas, valores a pagar e gráfico de gastos por categoria, com filtros de mês, conta e cartão. A antiga tela de agentes foi retirada da navegação; os dados anteriores são preservados no backup.
 - Carteira manual de investimentos (uma extensão de produto; a página web de referência apenas direcionava ao app móvel).
 - CSV de extratos com prévia paginada, seleção de registros, duplicatas e projeção de saldo antes da confirmação; exportação CSV, backup/restauração JSON validada e limpeza para começar com dados próprios.
 - Interface responsiva, foco em diálogos, navegação por teclado e escape de conteúdo fornecido pelo usuário.
@@ -52,7 +52,7 @@ Transferências efetivadas afetam as duas contas sem inflar receitas/despesas. U
 
 ### Recorrências e histórico
 
-Em “Vision → Recorrências”, cadastre uma regra e use “Revisar lançamentos”. A análise não grava dados; a confirmação gera somente ocorrências até a data atual, em lotes de até 1.000. Uma regra mensal iniciada em 31/01 mantém a referência: 28/02 e 31/03. Datas originais já processadas ficam protegidas; a liquidação pode ocorrer em outro dia. Pausar preserva o histórico; retomar exige nova revisão e pode incluir ocorrências vencidas durante a pausa. Regras concluídas permanecem encerradas.
+Em “Menu → Recorrências”, cadastre uma regra e use “Revisar lançamentos”. A análise não grava dados; a confirmação gera somente ocorrências até a data atual, em lotes de até 1.000. Uma regra mensal iniciada em 31/01 mantém a referência: 28/02 e 31/03. Datas originais já processadas ficam protegidas; a liquidação pode ocorrer em outro dia. Pausar preserva o histórico; retomar exige nova revisão e pode incluir ocorrências vencidas durante a pausa. Regras concluídas permanecem encerradas.
 
 Cada ocorrência possui identidade por regra/data. Outra revisão não recria lançamentos, mesmo cancelados. Coincidências exatas com um lançamento manual não cancelado são ignoradas conservadoramente e contam como processadas; a prévia informa isso. Regras distintas representam obrigações distintas, mesmo com valores iguais. A geração não funciona em segundo plano quando o aplicativo está fechado.
 
@@ -72,3 +72,17 @@ npm test
 ```
 
 Os 86 testes cobrem valores em centavos, transferências, faturas, limites, pagamento único, caixa/consumo, pendências, CSV, prévia/seleção/saldo, recorrências, calendário, liquidação/cancelamento/restauração, auditoria, validação de backup, duplicatas e agentes. O ciclo foi adicionalmente comparado em 7.080 casos com a função do aplicativo existente, sem divergências. Veja `docs/ETAPA-1.md`, `docs/ETAPA-2-PREVIA.md`, `docs/ETAPA-2-RECORRENCIAS.md`, `docs/ETAPAS.md` e `docs/OBSERVACOES.md`.
+
+## Uso no celular e importação de extratos
+
+A navegação inferior dá acesso a Resumo, Transações, Cartões e Contas. As outras telas ficam no menu lateral. No celular, cada transação mostra descrição, categoria, conta/cartão, data e valor em um bloco, com botões escritos para editar e ocultar. As opções dos seletores são ordenadas alfabeticamente em português; opções gerais como “Todas as contas” ficam no início.
+
+No Resumo, o mês vale para entradas, despesas e valores a pagar; o saldo disponível é o saldo atual das contas selecionadas. Cartão de crédito não é somado ao dinheiro disponível. Ao selecionar um cartão, saldo e entradas são os da conta vinculada, enquanto gastos e valores a pagar são apenas daquele cartão. Os gastos combinam despesas sem cartão pela data do lançamento e parcelas dos cartões pelo mês de vencimento. O pagamento da fatura não é contado outra vez. O filtro de categoria afeta apenas o gráfico; “Ver lançamentos” abre os registros que compõem a categoria.
+
+“Ocultar” retira o lançamento da lista normal e dos relatórios, preservando seu efeito no saldo e na fatura. “Ver ocultos” mostra os lançamentos ocultos de todos os meses da conta selecionada. “Exibir novamente” recupera o lançamento. A caixa “Incluir lançamentos ocultos” também permite vê-los junto aos demais registros do mês.
+
+Na importação, escolha Despesa (padrão), Receita ou Usar o tipo do arquivo. No modo automático, uma linha sem tipo e com valor positivo é receita; uma linha negativa é despesa. A prévia permite revisar tipo e categoria de cada linha, recalcula os totais e verifica duplicatas antes da gravação. Faturas aceitam somente despesas e continuam protegendo pagamentos e estornos.
+
+Para corrigir registros antigos, abra Transações, escolha a conta e o mês e toque em “Corrigir importados”. Selecione os registros, escolha o tipo, revise a mudança no saldo e confirme. O procedimento altera os registros existentes, preserva seus identificadores e registra a mudança no histórico. Compras de faturas pagas, pagamentos de fatura e lançamentos vinculados a recorrências ou assinaturas ficam protegidos. A atualização da interface não reclassifica automaticamente receitas antigas.
+
+Validação desta atualização: 145 testes automatizados, verificações de sintaxe da interface e do servidor, e testes no Chromium em 320, 390, 430, 768 e 1280 px. Os fluxos de edição, ocultação/restauração, filtros, correção de importados e importação mista foram exercitados com dados fictícios em memória, sem acesso ao banco de produção.

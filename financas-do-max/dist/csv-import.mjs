@@ -1,5 +1,33 @@
-import {accountBalance, normalize, uid} from './domain.mjs';
-import {validCivilDate, purchaseInvoiceMonth, assertPurchaseAllowed} from './billing.mjs';
+import {accountBalance, normalize, uid, validateState} from './domain.mjs';
+import {validCivilDate, purchaseInvoiceMonth, assertPurchaseAllowed, hasPaidPurchase} from './billing.mjs';
+
+export function applyCsvType(records, type='auto') {
+  if(!['auto','expense','income'].includes(type))throw new Error('Escolha Despesa, Receita ou Usar o tipo do arquivo.');
+  const result=records.map(record=>({...record,type:type==='auto'?record.type:type}));
+  result.skippedPayments=records.skippedPayments||0;
+  return result;
+}
+
+export function canCorrectCsvType(state, row) {
+  return row.source==='csv'&&['income','expense'].includes(row.type)&&!row.invoicePaymentId&&!row.recurringTransactionId&&!row.subscriptionId&&!row.isSubscription&&!hasPaidPurchase(state,row.id);
+}
+
+// Preview and confirmation share this pure plan; protected records abort the
+// whole operation instead of partially changing account balances.
+export function planCsvTypeCorrection(state, ids, type) {
+  if(!['expense','income'].includes(type))throw new Error('Escolha Despesa ou Receita.');
+  const selected=new Set(ids);
+  if(!selected.size)throw new Error('Selecione os lançamentos importados que deseja corrigir.');
+  const rows=[...selected].map(id=>state.transactions.find(row=>row.id===id));
+  if(rows.some(row=>!row||!canCorrectCsvType(state,row)||row.cardId&&type!=='expense'))throw new Error('A seleção contém um registro protegido ou incompatível. Revise os lançamentos.');
+  const next=structuredClone(state);
+  const changes=next.transactions.filter(row=>selected.has(row.id)&&row.type!==type);
+  if(!changes.length)throw new Error('Os lançamentos selecionados já estão com esse tipo.');
+  for(const row of changes)row.type=type;
+  validateState(next);
+  const accounts=state.accounts.filter(account=>rows.some(row=>row.accountId===account.id)).map(account=>({id:account.id,name:account.name,before:accountBalance(state,account.id),after:accountBalance(next,account.id)}));
+  return {transactions:next.transactions,accounts,count:changes.length};
+}
 
 const fingerprint = row => [row.date, row.type, row.amount, normalize(row.description.trim()), row.accountId].join('|');
 
