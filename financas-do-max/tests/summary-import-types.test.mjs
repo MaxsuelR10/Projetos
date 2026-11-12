@@ -42,6 +42,37 @@ test('ocultar afeta o gráfico, preserva saldo e cobrança e continua recuperáv
   assert.equal(after.spending,before.spending-5000);assert.equal(after.balance,before.balance);assert.equal(after.payable,before.payable);assert.equal(after.hiddenCount,1);
 });
 
+test('faturas do mês atual somam dois cartões por vencimento e incluem compras até hoje',()=>{
+  const s=fixture();
+  s.cards[1].closingDay=18;
+  const purchase=(id,card,date,amount,extra={})=>({
+    id,description:id,cardId:card.id,accountId:card.accountId,date,amount,
+    categoryId:'food',type:'expense',status:'completed',...extra,
+  });
+  const [nubank,inter]=s.cards;
+  s.transactions=[
+    purchase('outubro-nubank',nubank,'2026-10-28',10000),
+    purchase('novembro-nubank',nubank,'2026-11-02',2000,{hidden:true}),
+    purchase('outubro-inter',inter,'2026-10-20',5000),
+    purchase('hoje-inter',inter,'2026-11-12',3000),
+    purchase('futura-inter',inter,'2026-11-13',4000),
+    purchase('vence-dezembro',nubank,'2026-11-04',9000),
+  ];
+  registerInvoicePayment(s,{cardId:nubank.id,month:'2026-11',accountId:'bank',date:'2026-11-05',id:'payment'});
+  const today='2026-11-12';
+  const report=summaryFor(s,'2026-11',{today});
+  assert.deepEqual(report.invoices.map(i=>[i.cardId,i.total,i.status]),[
+    ['nubank',12000,'paid'],['inter',8000,'open'],
+  ]);
+  assert.equal(report.invoiceTotal,20000);
+  assert.equal(report.payable,8000);
+  assert.equal(report.spending,18000);
+  assert.ok(report.rows.every(row=>row.effectiveDate==='2026-11-23'));
+  assert.equal(summaryFor(s,'2026-11',{today,cardId:inter.id}).invoiceTotal,8000);
+  assert.equal(summaryFor(s,'2026-11',{today:'2026-12-01'}).invoiceTotal,24000);
+  assert.equal(summaryFor(s,'2026-12',{today}).invoiceTotal,9000);
+});
+
 test('tipo escolhido prevalece sobre sinal positivo e é usado na prévia, duplicatas e gravação',()=>{
   const s=fixture(),parsed=parseCSV('data;descricao;valor\n2026-10-22;Compra teste;123,45');
   assert.equal(parsed[0].type,'income');

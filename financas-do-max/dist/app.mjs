@@ -119,14 +119,19 @@ function renderOverview() {
       ${selectField('Conta','summary-account','<option value="">Todas as contas</option>'+options(state.accounts,summaryAccount),'id="summary-account"')}
       ${selectField('Cartão','overview-card','<option value="">Todos os cartões</option>'+options(state.cards.filter(c=>!summaryAccount||c.accountId===summaryAccount),overviewCardId),'id="overview-card"')}
       ${button('Limpar filtros','clear-summary','','btn')}
-    </section><p class="summary-scope">${e(scope)} · ${e(monthName(month))}</p>
-    <details class="summary-help"><summary>Como os valores são calculados?</summary><p class="hint">Gastos da conta pela data do lançamento; compras no cartão pelas parcelas que vencem no mês. Pagar a fatura não soma o gasto outra vez. Saldo e entradas são da conta vinculada ao cartão. O saldo é atual; as entradas e os gastos são do mês escolhido.</p></details>
+    </section><p class="summary-scope">${e(scope)} · ${e(monthName(month))}${report.throughDate?` · lançamentos até ${dateLabel(report.throughDate)}`:''}</p>
+    <details class="summary-help"><summary>Como os valores são calculados?</summary><p class="hint">As compras no cartão entram na fatura do mês em que vencem. Gastos da conta seguem a data do lançamento. Pagar uma fatura reduz o valor a pagar. O saldo mostra o valor atual das contas selecionadas.</p></details>
     <div class="stats-row four summary-stats">
       ${statCard('Saldo disponível',currency(report.balance),'wallet',overviewCardId?'Saldo atual da conta vinculada ao cartão':'Saldo atual das contas selecionadas')}
       ${statCard('Entrou no mês',currency(report.income),'arrow',overviewCardId?'Recebido na conta vinculada ao cartão':'Valores já recebidos no mês','income-card')}
       ${statCard('A pagar no mês',currency(report.payable),'calendar',overviewCardId?'Fatura em aberto do cartão selecionado':'Contas pendentes + faturas em aberto')}
       ${statCard('Gastos do mês',currency(report.spending),'card',overviewCardId?'Parcelas do cartão neste mês':'Despesas da conta + parcelas dos cartões')}
     </div>
+    ${report.invoices.length?`<section class="panel summary-accounts" aria-label="Faturas do mês">
+      ${cardHeading('Faturas do mês')}
+      <div class="summary-account-row"><span>Total das faturas</span><strong>${currency(report.invoiceTotal)}</strong></div>
+      ${report.invoices.map(invoice=>`<div class="summary-account-row"><span>${e(invoice.name)} · vence em ${dateLabel(invoice.dueDate)}${invoice.status==='paid'?' · paga':''}</span><strong>${currency(invoice.total)}</strong></div>`).join('')}
+    </section>`:''}
     <section class="panel summary-categories">
       ${cardHeading('Gastos por categoria')}
       ${selectField('Categoria do gráfico','summary-category','<option value="">Todas as categorias</option>'+options(state.categories,summaryCategory),'id="summary-category"')}
