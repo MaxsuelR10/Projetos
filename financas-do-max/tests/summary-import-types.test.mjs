@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {summaryFor,sortSelectOptions} from '../dist/summary.mjs';
+import {summaryFor,sortSelectOptions,uncategorizedOption} from '../dist/summary.mjs';
 import {seedState,parseCSV,validateState,accountBalance} from '../dist/domain.mjs';
-import {registerInvoicePayment} from '../dist/billing.mjs';
+import {invoiceFor,registerInvoicePayment} from '../dist/billing.mjs';
 import {applyCsvType,previewCsvImport,buildCsvImport,planCsvTypeCorrection} from '../dist/csv-import.mjs';
 
 function fixture(){
@@ -42,7 +42,7 @@ test('ocultar afeta o gráfico, preserva saldo e cobrança e continua recuperáv
   assert.equal(after.spending,before.spending-5000);assert.equal(after.balance,before.balance);assert.equal(after.payable,before.payable);assert.equal(after.hiddenCount,1);
 });
 
-test('faturas do mês atual somam dois cartões por vencimento e incluem compras até hoje',()=>{
+test('faturas do mês atual somam dois cartões pelo vencimento e batem com a tela de Cartões',()=>{
   const s=fixture();
   s.cards[1].closingDay=18;
   const purchase=(id,card,date,amount,extra={})=>({
@@ -62,15 +62,31 @@ test('faturas do mês atual somam dois cartões por vencimento e incluem compras
   const today='2026-11-12';
   const report=summaryFor(s,'2026-11',{today});
   assert.deepEqual(report.invoices.map(i=>[i.cardId,i.total,i.status]),[
-    ['nubank',12000,'paid'],['inter',8000,'open'],
+    ['nubank',12000,'paid'],['inter',12000,'open'],
   ]);
-  assert.equal(report.invoiceTotal,20000);
-  assert.equal(report.payable,8000);
-  assert.equal(report.spending,18000);
+  assert.equal(report.invoiceTotal,24000);
+  assert.equal(report.payable,12000);
+  assert.equal(report.spending,22000);
   assert.ok(report.rows.every(row=>row.effectiveDate==='2026-11-23'));
-  assert.equal(summaryFor(s,'2026-11',{today,cardId:inter.id}).invoiceTotal,8000);
+  assert.equal(summaryFor(s,'2026-11',{today,cardId:inter.id}).invoiceTotal,invoiceFor(s,inter,'2026-11').total);
   assert.equal(summaryFor(s,'2026-11',{today:'2026-12-01'}).invoiceTotal,24000);
   assert.equal(summaryFor(s,'2026-12',{today}).invoiceTotal,9000);
+});
+
+test('fatura do mês seguinte é sinalizada sem entrar na soma e gastos sem categoria aparecem no resumo',()=>{
+  const s=fixture();
+  s.transactions.find(t=>t.id==='i-market').categoryId='';
+  const october=summaryFor(s,'2026-10');
+  assert.deepEqual(october.categories.find(c=>c.id===uncategorizedOption(s).id),{
+    id:uncategorizedOption(s).id,name:'Sem categoria',icon:'◌',total:7000,
+  });
+  assert.equal(october.categories.reduce((sum,c)=>sum+c.total,0),october.spending);
+
+  s.transactions.find(t=>t.id==='n-food').date='2026-10-04';
+  s.transactions.find(t=>t.id==='n-market').date='2026-10-04';
+  const report=summaryFor(s,'2026-10');
+  assert.equal(report.invoiceTotal,7000);
+  assert.deepEqual(report.invoices.find(i=>i.cardId==='nubank').nextInvoice,{month:'2026-11',total:8000});
 });
 
 test('tipo escolhido prevalece sobre sinal positivo e é usado na prévia, duplicatas e gravação',()=>{
