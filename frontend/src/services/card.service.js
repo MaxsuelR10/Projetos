@@ -10,4 +10,6 @@ export const cardService = {
   async createPurchase(id, data) { const response = await api.post(`/cards/${id}/purchases`, data); return response.data.purchase },
   async cancelPurchase(id) { await api.delete(`/card-purchases/${id}`) },
   async payInvoice(id, data) { const response = await api.post(`/invoices/${id}/pay`, data); return response.data.invoice },
+  async editInvoicePayment(id, paymentId, data) { const response = await api.patch(`/invoices/${id}/payments/${paymentId}`, data); return response.data.invoice },
+  async cancelInvoicePayment(id, paymentId) { const response = await api.delete(`/invoices/${id}/payments/${paymentId}`); return response.data.invoice },
 }

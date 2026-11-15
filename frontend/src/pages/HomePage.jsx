@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { dashboardService } from "../services/dashboard.service.js";
 import { cardService } from "../services/card.service.js";
-import { formatCurrency } from "../utils/formatters.js";
+import { brazilianCivilDate, formatCurrency } from "../utils/formatters.js";
 import { getApiError } from "../utils/get-api-error.js";
 import { useAuth } from "../hooks/useAuth.js";
 import { FINANCIAL_DATA_CHANGED } from "../utils/financial-events.js";
@@ -52,6 +52,31 @@ const agendaTypeLabels = {
   BUDGET: "Orçamento",
 };
 
+const invoiceStatusLabels = { OPEN: "Aberta", CLOSED: "Fechada", OVERDUE: "Atrasada" };
+
+function PendingInvoiceList({ title, invoices, total, currency }) {
+  if (!invoices?.length) return null;
+  return (
+    <section className="editor-card" aria-label={title}>
+      <div className="section-heading">
+        <h3>{title}</h3>
+        <strong>{formatCurrency(total, currency)}</strong>
+      </div>
+      <div className="movement-list">
+        {invoices.map((invoice) => (
+          <Link className="movement-row" key={invoice.id} to={`/cartoes?cardId=${invoice.cardId}&month=${invoice.month}`}>
+            <span className="movement-info">
+              <strong>{invoice.cardName}</strong>
+              <small>Vence em {formatAgendaDate(invoice.dueDate.slice(0, 10))} · {invoiceStatusLabels[invoice.status]}</small>
+            </span>
+            <strong>{formatCurrency(invoice.amount, currency)}</strong>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function pointOnCircle(percentage, radius) {
   const angle = ((percentage / 100) * 360 - 90) * (Math.PI / 180);
   return {
@@ -84,7 +109,7 @@ function donutSegmentPath(start, end, outerRadius = 96, innerRadius = 56) {
 
 export function HomePage() {
   const { user } = useAuth();
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = brazilianCivilDate().slice(0, 7);
   const [startDate, setStartDate] = useState(() => firstDayOfMonth(currentMonth));
   const [endDate, setEndDate] = useState(() => lastDayOfMonth(currentMonth));
   const [expenseFrom, setExpenseFrom] = useState(() => firstDayOfMonth(currentMonth));
@@ -205,6 +230,7 @@ export function HomePage() {
                 value={startDate}
                 onChange={(event) => {
                   const nextStartDate = event.target.value;
+                  if (!nextStartDate) return;
                   setStartDate(nextStartDate);
                   setExpenseFrom(nextStartDate);
                   if (nextStartDate > endDate) {
@@ -222,6 +248,7 @@ export function HomePage() {
                 value={endDate}
                 onChange={(event) => {
                   const nextEndDate = event.target.value;
+                  if (!nextEndDate) return;
                   setEndDate(nextEndDate);
                   setExpenseTo(nextEndDate);
                 }}
@@ -274,7 +301,6 @@ export function HomePage() {
           ) : null}
 
           <section className="financial-summary" aria-labelledby="financial-summary-title">
-            {cardId ? <Link className="form-notice invoice-summary-link" to={'/cartoes?cardId=' + cardId + '&month=' + endDate.slice(0, 7)}>Fatura de {endDate.slice(0, 7)}: <strong>{formatCurrency(data.summary.invoiceTotal, user.currency)}</strong> · Ver compras e parcelas →</Link> : null}
             <div className="section-heading dashboard-section-heading">
               <div>
                 <p className="eyebrow">Sua posição agora</p>
@@ -289,7 +315,7 @@ export function HomePage() {
                 <small>Ver contas e saldos →</small>
               </Link>
               <Link className="summary-card" to={cardId ? '/cartoes?cardId=' + cardId + '&month=' + endDate.slice(0, 7) : '/movimentacoes'}>
-                <span>{cardId ? 'Faturas pagas no mês selecionado' : 'Gastos já pagos no período'}</span>
+                <span>{cardId ? 'Pagamentos do cartão no período' : 'Gastos já pagos no período'}</span>
                 <strong className="expense-text">{formatCurrency(data.summary.paidExpenses, user.currency)}</strong>
                 <small>{cardId ? 'Ver fatura →' : 'Ver lançamentos concluídos →'}</small>
               </Link>
@@ -306,6 +332,8 @@ export function HomePage() {
                 <small>Saldo atual menos compromissos →</small>
               </a>
             </div>
+            <PendingInvoiceList title="Faturas a pagar no período" invoices={data.pendingInvoices} total={data.summary.invoiceTotal} currency={user.currency} />
+            <PendingInvoiceList title="Faturas atrasadas de períodos anteriores" invoices={data.overdueInvoices} total={data.summary.overdueInvoiceTotal} currency={user.currency} />
           </section>
 
           <section className="metric-grid metric-grid-4">
@@ -489,7 +517,7 @@ export function HomePage() {
               <div>
                 <p className="eyebrow">Anatomia das despesas</p>
                 <h2>Despesas por categoria</h2>
-                <p className="chart-description">Veja quanto cada categoria representa no total gasto no período.</p>
+                <p className="chart-description">Compras no cartão pelo vencimento da fatura. Despesas da conta pela data do pagamento.</p>
               </div>
               {!cardId ? <div className="expense-date-filter">
                 <label>

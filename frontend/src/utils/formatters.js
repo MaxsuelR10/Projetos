@@ -7,6 +7,14 @@ export function formatCurrency(value, currency = 'BRL') {
   }).format(Number(value))
 }
 
+export function brazilianCivilDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now)
+  const get = (type) => parts.find((part) => part.type === type).value
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
+
 export function parseCurrency(value) {
   const rawValue = String(value ?? '').trim().replace(/R\$\s?/g, '').replace(/\s/g, '')
   // Values loaded from the API use a decimal point (e.g. "56.61"), while the

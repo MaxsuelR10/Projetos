@@ -356,7 +356,7 @@ model Transaction {
   createdAt              DateTime              @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime              @updatedAt @db.Timestamptz(3)
 
-  @@unique([creditCardInvoiceId, userId])
+  @@index([creditCardInvoiceId, userId])
   @@unique([cardPurchaseId, userId])
   @@unique([recurringTransactionId, date])
   @@unique([userId, importId, importRowKey])
@@ -571,12 +571,13 @@ model CreditCardInvoice {
   closingDate        DateTime          @db.Date
   dueDate            DateTime          @db.Date
   totalAmount        Decimal           @default(0) @db.Decimal(19, 4)
+  paidAmount         Decimal           @default(0) @db.Decimal(19, 4)
   status             InvoiceStatus     @default(OPEN)
   paidAt             DateTime?         @db.Timestamptz(3)
   user               User              @relation(fields: [userId], references: [id], onDelete: Restrict)
   creditCard         CreditCard        @relation(fields: [creditCardId, userId], references: [id, userId], onDelete: Restrict)
   installments       CardInstallment[]
-  paymentTransaction Transaction?      @relation("InvoicePayment")
+  paymentTransactions Transaction[]    @relation("InvoicePayment")
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 

@@ -1,5 +1,6 @@
 import {
   cancelPurchase,
+  changeInvoicePayment,
   createCard,
   createPurchase,
   deleteCard,
@@ -23,3 +24,8 @@ export async function updatePurchaseHandler(request, response) { return response
 export async function cancelPurchaseHandler(request, response) { await cancelPurchase(request.auth.userId, request.validated.params.id); return response.status(204).send(); }
 export async function listInvoicesHandler(request, response) { return response.status(200).json({ invoices: await listInvoices(request.auth.userId, request.validated.params.id, request.validated.query) }); }
 export async function payInvoiceHandler(request, response) { return response.status(200).json({ invoice: await payInvoice(request.auth.userId, request.validated.params.id, request.validated.body) }); }
+export async function changeInvoicePaymentHandler(request, response) {
+  const { id, paymentId } = request.validated.params;
+  const invoice = await changeInvoicePayment(request.auth.userId, id, paymentId, request.validated.body);
+  return response.status(200).json({ invoice });
+}

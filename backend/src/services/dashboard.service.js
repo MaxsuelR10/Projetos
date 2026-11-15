@@ -2,10 +2,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
 import {
+  brazilianDate,
   monthBounds,
   transactionCompetenceFilter,
 } from "../utils/financial-competence.js";
 import { listBudgets } from "./planning.service.js";
+import { effectiveInvoiceStatus, invoiceBalance } from "./card.service.js";
 
 function money(value) {
   return (value || new Prisma.Decimal(0)).toString();
@@ -54,32 +56,21 @@ function dueNonCardCommitment() {
 }
 
 async function getCashPeriodTotals(userId, range, cardId) {
-  if (cardId) {
-    const invoices = await prisma.creditCardInvoice.findMany({ where: { userId, creditCardId: cardId, status: "PAID", dueDate: { gte: range.start, lt: range.end } }, include: { installments: { where: { status: { not: "CANCELLED" } }, include: { purchase: { include: { category: true } } } } } });
-    const categories = new Map();
-    for (const invoice of invoices) for (const item of invoice.installments) add(categories, item.purchase.category.name, item.amount);
-    return { income: new Prisma.Decimal(0), expense: invoices.reduce((total, invoice) => total.plus(invoice.totalAmount), new Prisma.Decimal(0)), categories };
-  }
   const transactions = await prisma.transaction.findMany({
     where: {
       ...cashPeriodTransactions(userId, range),
+      ...(cardId ? { creditCardInvoice: { creditCardId: cardId } } : {}),
     },
-    include: { category: { select: { name: true } } },
+    select: { type: true, amount: true },
   });
 
   let income = new Prisma.Decimal(0);
   let expense = new Prisma.Decimal(0);
-  const categories = new Map();
-
   for (const transaction of transactions) {
     if (transaction.type === "INCOME") income = income.plus(transaction.amount);
-    else {
-      expense = expense.plus(transaction.amount);
-      add(categories, transaction.category.name, transaction.amount);
-    }
+    else expense = expense.plus(transaction.amount);
   }
-
-  return { income, expense, categories };
+  return { income, expense };
 }
 
 function dateRange(from, to) {
@@ -90,8 +81,7 @@ function dateRange(from, to) {
 }
 
 function startOfToday() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return new Date(`${brazilianDate()}T00:00:00.000Z`);
 }
 
 function addUtcDays(date, amount) {
@@ -151,7 +141,7 @@ async function getForwardView(userId, balance) {
       include: { category: { select: { name: true } } },
     }),
     prisma.creditCardInvoice.findMany({
-      where: { userId, status: { not: "PAID" }, dueDate: { lte: through } },
+      where: { userId, status: { not: "PAID" }, totalAmount: { gt: prisma.creditCardInvoice.fields.paidAmount }, dueDate: { lte: through } },
       orderBy: { dueDate: "asc" },
       include: { creditCard: { select: { name: true } } },
     }),
@@ -180,7 +170,7 @@ async function getForwardView(userId, balance) {
     new Prisma.Decimal(0),
   );
   const invoiceCommitments = invoices.reduce(
-    (total, item) => total.plus(item.totalAmount),
+    (total, item) => total.plus(invoiceBalance(item)),
     new Prisma.Decimal(0),
   );
   const futureCommitments = transactionCommitments.plus(invoiceCommitments);
@@ -203,7 +193,7 @@ async function getForwardView(userId, balance) {
       type: "INVOICE",
       title: `Fatura ${item.creditCard.name}`,
       subtitle: "Cartão de crédito",
-      amount: item.totalAmount,
+      amount: invoiceBalance(item),
       dueDate: item.dueDate,
       path: "/cartoes",
       today,
@@ -284,7 +274,7 @@ async function getForwardView(userId, balance) {
         title: item.dueDate < today
           ? `Fatura ${item.creditCard.name} vencida`
           : `Fatura ${item.creditCard.name} vence em breve`,
-        description: `${money(item.totalAmount)} com vencimento em ${isoDate(item.dueDate)}.`,
+        description: `${money(invoiceBalance(item))} com vencimento em ${isoDate(item.dueDate)}.`,
         path: "/cartoes",
       })),
     ...recurrences
@@ -356,7 +346,8 @@ export async function getDashboard(userId, query = {}) {
     const card = await prisma.creditCard.findFirst({ where: { id: cardId, userId }, select: { id: true } });
     if (!card) throw new AppError("Cartão não encontrado", 404, "CARD_NOT_FOUND");
   }
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const today = startOfToday();
+  const currentMonth = isoDate(today).slice(0, 7);
   const startMonth = query.startMonth ?? query.month ?? query.startDate?.slice(0, 7) ?? currentMonth;
   const endMonth = query.endMonth ?? query.endDate?.slice(0, 7) ?? startMonth;
   const months = query.months ?? 6;
@@ -383,10 +374,10 @@ export async function getDashboard(userId, query = {}) {
     inactiveAccounts,
     investmentsAggregate,
     pending,
-    pendingCardInstallments,
     cards,
-    upcomingInvoices,
+    payableInvoices,
     expenseBreakdown,
+    selectedCategories,
   ] = await Promise.all([
     getCashPeriodTotals(userId, range, cardId),
     cardId ? getCashPeriodTotals(userId, range) : null,
@@ -406,18 +397,6 @@ export async function getDashboard(userId, query = {}) {
       where: { ...pendingPeriodTransactions(userId, range), ...(cardId ? { creditCardId: cardId } : {}) },
       _sum: { amount: true },
     }),
-    prisma.cardInstallment.findMany({
-      where: {
-        userId,
-        ...(cardId ? { creditCardId: cardId } : {}),
-        status: "PENDING",
-        invoice: {
-          dueDate: { gte: range.start, lt: range.end },
-          status: { not: "PAID" },
-        },
-      },
-      select: { amount: true, dueDate: true },
-    }),
     prisma.creditCard.findMany({
       where: { userId, type: "CREDIT", ...(cardId ? { id: cardId } : { isActive: true }) },
       select: { id: true, name: true, creditLimit: true },
@@ -427,13 +406,17 @@ export async function getDashboard(userId, query = {}) {
         userId,
         ...(cardId ? { creditCardId: cardId } : {}),
         status: { not: "PAID" },
-        dueDate: { gte: range.start, lt: range.end },
+        totalAmount: { gt: prisma.creditCardInvoice.fields.paidAmount },
+        OR: [
+          { dueDate: { gte: range.start, lt: range.end } },
+          { dueDate: { lt: today < range.start ? today : range.start } },
+        ],
       },
-      orderBy: { dueDate: "asc" },
-      take: 1,
+      orderBy: [{ dueDate: "asc" }, { creditCardId: "asc" }],
       include: { creditCard: { select: { name: true } } },
     }),
     getExpenseBreakdown(userId, expenseRange, cardId),
+    expenseFrom === rangeStart && expenseTo === rangeEnd ? null : getExpenseBreakdown(userId, range, cardId),
   ]);
 
   const [seriesTotals, cardUsage, commitments, overdueTransactions, movementCount] =
@@ -447,19 +430,15 @@ export async function getDashboard(userId, query = {}) {
       ),
       Promise.all(
         cards.map(async (card) => {
-          const total = await prisma.cardInstallment.aggregate({
-            where: { userId, creditCardId: card.id, status: "PENDING" },
-            _sum: { amount: true },
+          const total = await prisma.creditCardInvoice.aggregate({
+            where: { userId, creditCardId: card.id, status: { not: "PAID" } },
+            _sum: { totalAmount: true, paidAmount: true },
           });
+          const used = new Prisma.Decimal(total._sum.totalAmount ?? 0).minus(total._sum.paidAmount ?? 0);
           return {
             name: card.name,
-            used: money(total._sum.amount),
-            available: Prisma.Decimal.max(
-              new Prisma.Decimal(0),
-              new Prisma.Decimal(card.creditLimit).minus(
-                total._sum.amount || 0,
-              ),
-            ).toString(),
+            used: money(used),
+            available: Prisma.Decimal.max(0, new Prisma.Decimal(card.creditLimit).minus(used)).toString(),
           };
         }),
       ),
@@ -479,16 +458,16 @@ export async function getDashboard(userId, query = {}) {
       prisma.transaction.count({ where: { userId, status: { not: "CANCELLED" } } }),
     ]);
 
-  const cardPending = pendingCardInstallments.reduce(
-    (total, installment) => total.plus(installment.amount),
-    new Prisma.Decimal(0),
-  );
-  const cardOverdue = pendingCardInstallments
-    .filter((installment) => installment.dueDate < new Date())
-    .reduce(
-      (total, installment) => total.plus(installment.amount),
-      new Prisma.Decimal(0),
-    );
+  const inPeriod = payableInvoices.filter((item) => item.dueDate >= range.start);
+  const priorOverdue = payableInvoices.filter((item) => item.dueDate < range.start);
+  const sumInvoices = (items) => items.reduce((total, item) => total.plus(invoiceBalance(item)), new Prisma.Decimal(0));
+  const cardPending = sumInvoices(inPeriod);
+  const cardOverdue = sumInvoices(inPeriod.filter((item) => item.dueDate < today));
+  const publicInvoice = (invoice) => ({
+    id: invoice.id, cardId: invoice.creditCardId, cardName: invoice.creditCard.name,
+    month: isoDate(invoice.dueDate).slice(0, 7), dueDate: invoice.dueDate,
+    status: effectiveInvoiceStatus(invoice, today), amount: money(invoiceBalance(invoice)),
+  });
   const pendingAmount = new Prisma.Decimal(pending._sum.amount || 0);
   const commitmentsByAccount = new Map(
     commitments.map((item) => [
@@ -534,7 +513,8 @@ export async function getDashboard(userId, query = {}) {
       availableBalance: money(balance),
       currentBalance: money(balance),
       paidExpenses: money(periodTotals.expense),
-      invoiceTotal: cardId ? money(periodTotals.expense.plus(pendingCardInstallments.reduce((total, item) => total.plus(item.amount), new Prisma.Decimal(0)))) : null,
+      invoiceTotal: money(cardPending),
+      overdueInvoiceTotal: money(sumInvoices(priorOverdue)),
       futureCommitments: forwardView.futureCommitments,
       freeBalanceProjected: forwardView.freeBalanceProjected,
       projectedBalance: money(projectedBalance),
@@ -568,10 +548,7 @@ export async function getDashboard(userId, query = {}) {
         ),
       ),
     })),
-    categoryExpenses: [...periodTotals.categories.entries()]
-      .map(([name, amount]) => ({ name, amount: money(amount) }))
-      .sort((a, b) => Number(b.amount) - Number(a.amount))
-      .slice(0, 6),
+    categoryExpenses: (selectedCategories ?? expenseBreakdown).slice(0, 6),
     expenseBreakdown,
     monthlySeries: seriesRanges.map((seriesRange, index) => ({
       month: `${seriesRange.year}-${String(seriesRange.month).padStart(2, "0")}`,
@@ -580,12 +557,14 @@ export async function getDashboard(userId, query = {}) {
       expense: money(seriesTotals[index].expense),
     })),
     cards: cardUsage,
-    nextInvoice: upcomingInvoices[0]
+    pendingInvoices: inPeriod.map(publicInvoice),
+    overdueInvoices: priorOverdue.map(publicInvoice),
+    nextInvoice: inPeriod[0]
       ? {
-          id: upcomingInvoices[0].id,
-          cardName: upcomingInvoices[0].creditCard.name,
-          dueDate: upcomingInvoices[0].dueDate,
-          amount: money(upcomingInvoices[0].totalAmount),
+          id: inPeriod[0].id,
+          cardName: inPeriod[0].creditCard.name,
+          dueDate: inPeriod[0].dueDate,
+          amount: money(invoiceBalance(inPeriod[0])),
         }
       : null,
     agenda: {

@@ -1,4 +1,4 @@
-import {invoiceFor, creditInstallmentPlans, validMonth, validCivilDate} from './billing.mjs';
+import {invoiceFor, creditInstallmentPlans, installmentAmount, validMonth, validCivilDate} from './billing.mjs';
 import {validateRecurrences} from './recurrences.mjs';
 import {validateAudit} from './audit.mjs';
 export const STORE_KEY = 'financas-do-max:v1';
@@ -39,8 +39,7 @@ export function accountBalance(state,id) {
   }, state.accounts.find(a=>a.id===id)?.openingBalance || 0);
 }
 export function categoryTotals(state,month,account='',{basis='consumption'}={}) {
-  const rows=monthlyRows(state,month,{account,basis}).filter(t=>basis==='cash'||!t.invoicePaymentId);
-  return state.categories.map(c=>({...c,total:rows.filter(t=>t.categoryId===c.id&&t.type==='expense').reduce((s,t)=>s+t.amount,0)})).sort((a,b)=>b.total-a.total);
+  return financialReport(state,month,{account,basis}).categories;
 }
 export function dailyTotals(rows,month) {
   const days=new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate();
@@ -49,20 +48,27 @@ export function dailyTotals(rows,month) {
 export function financialReport(state,month,{basis='cash',account='',cardId=''}={}) {
   const card=state.cards.find(c=>c.id===cardId);
   const invoice=card?invoiceFor(state,card,month):null;
-  const rows=invoice?invoice.items.map(item=>({
-    ...state.transactions.find(t=>t.id===item.transactionId),
-    amount:item.amount,effectiveDate:invoice.dueDate,
-    installmentIndex:item.index,installmentTotal:item.count,
-  })):monthlyRows(state,month,{account,basis});
   const reportBasis=invoice?'consumption':basis;
+  const transactions=new Map(state.transactions.map(item=>[item.id,item]));
+  const invoiceRows=reference=>reference.items.map(item=>({
+    ...transactions.get(item.transactionId),
+    amount:item.amount,effectiveDate:reference.dueDate,
+    installmentIndex:item.index,installmentTotal:item.count,
+  }));
+  const monthly=invoice?[]:monthlyRows(state,month,{account,basis});
+  const rows=invoice?invoiceRows(invoice):basis==='cash'?monthly:[
+    ...monthly.filter(item=>!item.cardId&&!item.invoicePaymentId),
+    ...state.cards.filter(item=>!account||item.accountId===account)
+      .flatMap(item=>invoiceRows(invoiceFor(state,item,month))).filter(item=>!item.hidden),
+  ];
   const summary=totals(rows,{basis:reportBasis});
   const categories=state.categories.map(category=>({...category,total:rows.filter(t=>t.type==='expense'&&t.status!=='cancelled'&&t.categoryId===category.id&&(reportBasis==='cash'||!t.invoicePaymentId)).reduce((sum,t)=>sum+t.amount,0)})).sort((a,b)=>b.total-a.total);
   return {rows,summary,categories,invoice,basis:reportBasis};
 }
 export function pendingExpenses(state,month,account='') {
   const transactions=state.transactions.filter(t=>t.status==='pending'&&!t.cardId&&t.type==='expense'&&(t.dueDate||t.date).startsWith(month)&&(!account||t.accountId===account));
-  const invoices=state.cards.filter(c=>!account||c.accountId===account).map(card=>invoiceFor(state,card,month)).filter(invoice=>!invoice.payment);
-  return transactions.reduce((sum,t)=>sum+t.amount,0)+invoices.reduce((sum,invoice)=>sum+invoice.total,0);
+  const invoices=state.cards.filter(c=>!account||c.accountId===account).map(card=>invoiceFor(state,card,month));
+  return transactions.reduce((sum,t)=>sum+t.amount,0)+invoices.reduce((sum,invoice)=>sum+invoice.remainingAmount,0);
 }
 export function cumulative(values) { let s=0;return values.map(n=>(s+=n)); }
 export function installmentSummary(items) {
@@ -161,16 +167,44 @@ export function validateState(s) {
   if(s.profile.palette!==undefined&&!['green','rose','violet','blue','amber','custom'].includes(s.profile.palette))throw new Error('Paleta inválida.');
   if(s.profile.surface!==undefined&&!['dark','light'].includes(s.profile.surface))throw new Error('Base de cor inválida.');
   if(s.profile.customColor!==undefined&&!/^#[0-9a-f]{6}$/i.test(s.profile.customColor))throw new Error('Cor personalizada inválida.');
-  const paidMonths=new Set(),paymentIds=new Set();
+  const paymentIds=new Set();
+  const paymentGroups=new Map();
   for(const payment of s.invoicePayments||[]){
     const card=s.cards.find(c=>c.id===payment.cardId),transaction=s.transactions.find(t=>t.id===payment.id);
-    if(!text(payment.id,100)||paymentIds.has(payment.id)||!card||!validMonth(payment.month)||!validCivilDate(payment.date)||!integer(payment.amount)||payment.amount<=0||!Array.isArray(payment.items)||!payment.items.length||paidMonths.has(`${payment.cardId}|${payment.month}`))throw new Error('Pagamento de fatura inválido ou duplicado.');
-    paymentIds.add(payment.id);paidMonths.add(`${payment.cardId}|${payment.month}`);
-    if(!transaction||transaction.invoicePaymentId!==payment.id||transaction.type!=='expense'||transaction.cardId||transaction.status!=='completed'||transaction.amount!==payment.amount||transaction.accountId!==payment.accountId||transaction.date!==payment.date||transaction.settledAt!==payment.date)throw new Error('Débito de fatura inconsistente.');
-    const invoice=invoiceFor(s,card,payment.month);
-    const expected=new Map(invoice.items.map(i=>[`${i.transactionId}|${i.index}`,i.amount]));
-    if(expected.size!==payment.items.length||invoice.total!==payment.amount)throw new Error('Composição da fatura paga foi alterada.');
-    for(const item of payment.items){const key=`${item.transactionId}|${item.index}`,purchase=s.transactions.find(t=>t.id===item.transactionId);if(expected.get(key)!==item.amount||!purchase||purchase.amount!==item.purchaseAmount||purchase.date!==item.purchaseDate||(purchase.installmentCount||1)!==item.installmentCount)throw new Error('Parcela paga inválida ou compra original alterada.');expected.delete(key);}
+    const original=payment.originalAmount??payment.amount;
+    if(!text(payment.id,100)||paymentIds.has(payment.id)||!card||!validMonth(payment.month)||!validCivilDate(payment.date)||
+      payment.cancelledAt!==undefined&&!validCivilDate(payment.cancelledAt)||!integer(payment.amount)||payment.amount<=0||
+      !Number.isSafeInteger(original)||original<payment.amount||!Array.isArray(payment.items)||!payment.items.length)
+      throw new Error('Pagamento de fatura inválido ou duplicado.');
+    paymentIds.add(payment.id);
+    if(!transaction||transaction.invoicePaymentId!==payment.id||transaction.type!=='expense'||transaction.cardId||
+      transaction.status!==(payment.cancelledAt?'cancelled':'completed')||transaction.amount!==payment.amount||
+      transaction.accountId!==payment.accountId||transaction.date!==payment.date||transaction.settledAt!==payment.date)
+      throw new Error('Débito de fatura inconsistente.');
+    const items=new Set();
+    let itemTotal=0;
+    for(const item of payment.items){
+      const key=JSON.stringify([item?.transactionId,item?.index]);
+      if(!item||!text(item.transactionId,100)||items.has(key)||!validCivilDate(item.purchaseDate)||
+        item.amount!==installmentAmount(item.purchaseAmount,item.installmentCount,item.index))
+        throw new Error('Parcela paga inválida.');
+      items.add(key);
+      itemTotal+=item.amount;
+    }
+    if(itemTotal!==original)throw new Error('Composição da fatura paga foi alterada.');
+    if(payment.cancelledAt)continue;
+    const groupKey=JSON.stringify([payment.cardId,payment.month]);
+    const invoice=paymentGroups.get(groupKey)||invoiceFor(s,card,payment.month);
+    paymentGroups.set(groupKey,invoice);
+    const expected=new Map(invoice.items.map(i=>[JSON.stringify([i.transactionId,i.index]),i.amount]));
+    if(invoice.remainingAmount<0||payment.originalAmount===undefined&&invoice.total!==original)
+      throw new Error('Composição da fatura paga foi alterada.');
+    for(const item of payment.items){
+      const purchase=s.transactions.find(t=>t.id===item.transactionId);
+      if(expected.get(JSON.stringify([item.transactionId,item.index]))!==item.amount||
+        purchase?.amount!==item.purchaseAmount||purchase.date!==item.purchaseDate||(purchase.installmentCount||1)!==item.installmentCount)
+        throw new Error('Parcela paga inválida ou compra original alterada.');
+    }
   }
   validateRecurrences(s);
   validateAudit(s);

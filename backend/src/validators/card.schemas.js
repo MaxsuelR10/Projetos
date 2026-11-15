@@ -63,5 +63,13 @@ export const listInvoicesSchema = z.object({ params: z.object({ id: idSchema }),
 export const invoiceIdSchema = z.object({ params: z.object({ id: idSchema }) });
 export const payInvoiceSchema = z.object({
   params: z.object({ id: idSchema }),
-  body: z.object({ accountId: idSchema, categoryId: idSchema.optional(), date: dateSchema.optional(), paymentMethod: paymentMethodSchema.optional(), notes: optionalText(5000) }).strict(),
+  body: z.object({ accountId: idSchema, categoryId: idSchema.optional(), date: dateSchema.optional(), paymentMethod: paymentMethodSchema.optional(), notes: optionalText(5000), amount: positiveMoneySchema.optional(), paymentId: idSchema.optional() })
+    .strict().refine((data) => data.amount === undefined || data.paymentId, { path: ["paymentId"], message: "Informe um identificador para evitar pagamentos duplicados" }),
+});
+const invoicePaymentParams = z.object({ id: idSchema, paymentId: idSchema });
+export const cancelInvoicePaymentSchema = z.object({ params: invoicePaymentParams });
+export const editInvoicePaymentSchema = z.object({
+  params: invoicePaymentParams,
+  body: z.object({ accountId: idSchema.optional(), date: dateSchema.optional(), amount: positiveMoneySchema.optional() })
+    .strict().refine((data) => Object.keys(data).length > 0, "Informe ao menos um campo para atualizar"),
 });

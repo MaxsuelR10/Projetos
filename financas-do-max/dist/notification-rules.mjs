@@ -17,7 +17,7 @@ export function financialNotifications(state,today=notificationDate(),{previous}
   };
   for(const card of state.cards)for(const period of [month,addMonth(month,1)]) {
     const invoice=invoiceFor(state,card,period);
-    if(invoice.total>0&&!invoice.payment)due(`invoice:${card.id}`,invoice.dueDate,`Fatura de ${card.name}`,'/#/cards');
+    if(invoice.remainingAmount>0)due(`invoice:${card.id}`,invoice.dueDate,`Fatura de ${card.name}`,'/#/cards');
   }
   for(const t of state.transactions) {
     if(t.type!=='expense'||t.cardId||t.status!=='pending')continue;

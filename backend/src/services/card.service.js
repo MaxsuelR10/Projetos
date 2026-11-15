@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
-import { cardInstallmentCompetence, invoiceDates } from "../utils/financial-competence.js";
+import { brazilianDate, cardInstallmentCompetence, invoiceDates } from "../utils/financial-competence.js";
 import { normalizeName } from "../utils/normalize-name.js";
 
 const cardSelect = { id: true, name: true, institution: true, brand: true, type: true, creditLimit: true, closingDay: true, dueDay: true, color: true, isActive: true };
@@ -11,6 +11,10 @@ const invoiceInclude = {
     where: { status: { not: "CANCELLED" }, purchase: { status: "ACTIVE" } },
     include: { purchase: { select: { id: true, description: true, merchant: true, installmentsCount: true, category: { select: { name: true } } } } },
     orderBy: { number: "asc" },
+  },
+  paymentTransactions: {
+    select: { id: true, amount: true, date: true, settledAt: true, status: true, updatedAt: true, accountId: true, account: { select: { name: true } } },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
   },
 };
 function asDate(value) { return new Date(`${value}T00:00:00.000Z`); }
@@ -26,15 +30,34 @@ export function splitMoney(amount, count) {
     return `${integer}.${decimal}`;
   });
 }
-function effectiveStatus(invoice) { return invoice.status === "OPEN" && invoice.closingDate < new Date() ? "CLOSED" : invoice.status; }
+export function effectiveInvoiceStatus(invoice, today = asDate(brazilianDate())) {
+  if (invoice.status === "PAID") return "PAID";
+  if (invoice.dueDate < today) return "OVERDUE";
+  return invoice.status === "CLOSED" || invoice.closingDate <= today ? "CLOSED" : "OPEN";
+}
+export function invoiceBalance(invoice) {
+  return invoice.status === "PAID" ? new Prisma.Decimal(0) : invoice.totalAmount.minus(invoice.paidAmount);
+}
 function serializeCard(card, usedLimit = "0") {
   const { userId: _userId, normalizedName: _normalizedName, ...publicCard } = card;
   const used = new Prisma.Decimal(usedLimit); const limit = new Prisma.Decimal(card.creditLimit);
   return { ...publicCard, creditLimit: serializeDecimal(card.creditLimit), usedLimit: used.toString(), availableLimit: Prisma.Decimal.max(limit.minus(used), new Prisma.Decimal(0)).toString() };
 }
 function serializeInvoice(invoice) {
-  const { userId: _userId, ...publicInvoice } = invoice;
-  return { ...publicInvoice, totalAmount: serializeDecimal(invoice.totalAmount), effectiveStatus: effectiveStatus(invoice), installments: invoice.installments?.map((item) => ({ ...item, userId: undefined, amount: serializeDecimal(item.amount) })) };
+  const { userId: _userId, paymentTransactions = [], ...publicInvoice } = invoice;
+  const remaining = invoiceBalance(invoice);
+  const payments = paymentTransactions.map((item) => ({ ...item, amount: serializeDecimal(item.amount) }));
+  const lastPayment = payments.findLast((item) => item.status === "COMPLETED");
+  return {
+    ...publicInvoice,
+    totalAmount: serializeDecimal(invoice.totalAmount),
+    paidAmount: serializeDecimal(invoice.totalAmount.minus(remaining)),
+    remainingAmount: serializeDecimal(remaining),
+    effectiveStatus: effectiveInvoiceStatus(invoice),
+    paymentTransaction: invoice.status === "PAID" ? lastPayment : undefined,
+    payments,
+    installments: invoice.installments?.map((item) => ({ ...item, userId: undefined, amount: serializeDecimal(item.amount) })),
+  };
 }
 function serializePurchase(purchase) {
   const { userId: _userId, totalAmount, ...publicPurchase } = purchase;
@@ -67,7 +90,20 @@ async function ensureInvoice(db, userId, card, reference, amount) {
   return invoice;
 }
 
+export async function lockCards(db, userId, ids) {
+  for (const id of [...new Set(ids.filter(Boolean))].sort()) {
+    await db.$queryRaw`SELECT "id" FROM "CreditCard" WHERE "id" = ${id}::uuid AND "userId" = ${userId}::uuid FOR UPDATE`;
+  }
+}
+
 export async function realignUnpaidInstallments(db, userId, card) {
+  await lockCards(db, userId, [card.id]);
+  const invoices = await db.$queryRaw`SELECT "id", "status", "paidAmount" FROM "CreditCardInvoice"
+    WHERE "userId" = ${userId}::uuid AND "creditCardId" = ${card.id}::uuid AND "status" <> 'PAID'
+    ORDER BY "id" FOR UPDATE`;
+  if (invoices.some((invoice) => invoice.paidAmount.gt(0))) {
+    throw new AppError("Corrija os pagamentos parciais antes de alterar o ciclo deste cartão", 409, "INVOICE_HAS_PAYMENTS");
+  }
   const installments = await db.cardInstallment.findMany({
     where: { userId, creditCardId: card.id, invoice: { status: { not: "PAID" } } },
     include: { purchase: { select: { purchaseDate: true } }, invoice: { select: { id: true } } },
@@ -103,26 +139,33 @@ export async function realignUnpaidInstallments(db, userId, card) {
     });
   }
   await db.creditCardInvoice.deleteMany({
-    where: { id: { in: [...affectedInvoiceIds] }, status: { not: "PAID" }, installments: { none: {} } },
+    where: { id: { in: [...affectedInvoiceIds] }, status: { not: "PAID" }, installments: { none: {} }, paymentTransactions: { none: {} } },
   });
+}
+
+async function cardUsedLimit(db, userId, cardId) {
+  const aggregate = await db.creditCardInvoice.aggregate({
+    where: { userId, creditCardId: cardId, status: { not: "PAID" } },
+    _sum: { totalAmount: true, paidAmount: true },
+  });
+  return new Prisma.Decimal(aggregate._sum.totalAmount ?? 0).minus(aggregate._sum.paidAmount ?? 0);
 }
 
 export async function listCards(userId, status) {
   const isActive = status === "all" ? undefined : status === "active";
   const cards = await prisma.creditCard.findMany({ where: { userId, ...(isActive === undefined ? {} : { isActive }) }, orderBy: [{ isActive: "desc" }, { name: "asc" }] });
   if (!cards.length) return [];
-  const usedLimits = await prisma.cardInstallment.groupBy({
+  const usedLimits = await prisma.creditCardInvoice.groupBy({
     by: ["creditCardId"],
-    where: { userId, creditCardId: { in: cards.map((card) => card.id) }, status: "PENDING" },
-    _sum: { amount: true },
+    where: { userId, creditCardId: { in: cards.map((card) => card.id) }, status: { not: "PAID" } },
+    _sum: { totalAmount: true, paidAmount: true },
   });
-  const usedByCardId = new Map(usedLimits.map((item) => [item.creditCardId, item._sum.amount?.toString() ?? "0"]));
+  const usedByCardId = new Map(usedLimits.map((item) => [item.creditCardId, new Prisma.Decimal(item._sum.totalAmount ?? 0).minus(item._sum.paidAmount ?? 0)]));
   return cards.map((card) => serializeCard(card, usedByCardId.get(card.id) ?? "0"));
 }
 export async function getCard(userId, id) {
   const card = await findCard(prisma, userId, id);
-  const aggregate = await prisma.cardInstallment.aggregate({ where: { userId, creditCardId: id, status: "PENDING" }, _sum: { amount: true } });
-  return serializeCard(card, aggregate._sum.amount?.toString() ?? "0");
+  return serializeCard(card, await cardUsedLimit(prisma, userId, id));
 }
 export async function createCard(userId, data) {
   await ensureUniqueName(userId, data.name);
@@ -136,8 +179,8 @@ export async function updateCard(userId, id, data) {
   const next = { creditLimit: data.creditLimit ?? card.creditLimit.toString(), closingDay: data.closingDay === undefined ? card.closingDay : data.closingDay, dueDay: data.dueDay === undefined ? card.dueDay : data.dueDay };
   if (nextType === "CREDIT" && (!next.closingDay || !next.dueDay || next.creditLimit === "0")) throw new AppError("Cartão de crédito exige limite, fechamento e vencimento", 400, "INVALID_CREDIT_CARD");
   if (nextType === "CREDIT" && data.creditLimit !== undefined) {
-    const used = await prisma.cardInstallment.aggregate({ where: { userId, creditCardId: id, status: "PENDING" }, _sum: { amount: true } });
-    if (new Prisma.Decimal(next.creditLimit).lessThan(used._sum.amount ?? 0)) {
+    const used = await cardUsedLimit(prisma, userId, id);
+    if (new Prisma.Decimal(next.creditLimit).lessThan(used)) {
       throw new AppError("O limite não pode ser menor que o valor já utilizado", 409, "CARD_LIMIT_BELOW_USED");
     }
   }
@@ -157,11 +200,12 @@ export async function deleteCard(userId, id) {
 }
 
 export async function createPurchaseInTransaction(db, userId, cardId, data) {
+  await lockCards(db, userId, [cardId]);
   const card = await findCard(db, userId, cardId, true);
   if (card.type !== "CREDIT") throw new AppError("CARD_NOT_CREDIT", 400, "CARD_NOT_CREDIT");
   await validateCategory(db, userId, data);
-  const used = await db.cardInstallment.aggregate({ where: { userId, creditCardId: card.id, status: "PENDING" }, _sum: { amount: true } });
-  if (new Prisma.Decimal(used._sum.amount ?? 0).plus(data.totalAmount).greaterThan(card.creditLimit)) throw new AppError("Esta compra ultrapassa o limite disponivel", 409, "CARD_LIMIT_EXCEEDED");
+  const used = await cardUsedLimit(db, userId, card.id);
+  if (used.plus(data.totalAmount).greaterThan(card.creditLimit)) throw new AppError("Esta compra ultrapassa o limite disponivel", 409, "CARD_LIMIT_EXCEEDED");
   const created = await db.cardPurchase.create({ data: { userId, creditCardId: card.id, categoryId: data.categoryId, subcategoryId: data.subcategoryId || null, description: data.description, merchant: nullable(data.merchant), totalAmount: data.totalAmount, purchaseDate: asDate(data.purchaseDate), installmentsCount: data.installmentsCount, notes: nullable(data.notes) } });
   const amounts = splitMoney(data.totalAmount, data.installmentsCount);
   for (let index = 0; index < amounts.length; index += 1) {
@@ -173,14 +217,19 @@ export async function createPurchaseInTransaction(db, userId, cardId, data) {
 }
 
 export async function cancelPurchaseInTransaction(db, userId, id) {
-  const purchase = await db.cardPurchase.findFirst({ where: { id, userId }, include: { installments: { include: { invoice: true } } } });
+  const purchase = await db.cardPurchase.findFirst({ where: { id, userId }, include: { installments: { orderBy: { invoiceId: "asc" } } } });
   if (!purchase) throw new AppError("Compra nao encontrada", 404, "PURCHASE_NOT_FOUND");
   if (purchase.status === "CANCELLED") return;
-  if (purchase.installments.some((item) => item.invoice.status === "PAID")) throw new AppError("Nao e possivel cancelar compra de fatura paga", 409, "PURCHASE_IN_PAID_INVOICE");
-  await db.cardPurchase.update({ where: { id }, data: { status: "CANCELLED" } });
+  await lockCards(db, userId, [purchase.creditCardId]);
+  const changed = await db.cardPurchase.updateMany({ where: { id, status: "ACTIVE" }, data: { status: "CANCELLED" } });
+  if (!changed.count) return;
   for (const installment of purchase.installments) {
+    const invoice = await db.creditCardInvoice.updateMany({
+      where: { id: installment.invoiceId, status: { not: "PAID" }, paidAmount: 0 },
+      data: { totalAmount: { decrement: installment.amount } },
+    });
+    if (!invoice.count) throw new AppError("Não é possível cancelar compra de uma fatura com pagamentos ativos", 409, "PURCHASE_IN_PAID_INVOICE");
     await db.cardInstallment.update({ where: { id: installment.id }, data: { status: "CANCELLED" } });
-    await db.creditCardInvoice.update({ where: { id: installment.invoiceId }, data: { totalAmount: { decrement: installment.amount } } });
   }
 }
 
@@ -204,17 +253,7 @@ export async function updatePurchase(userId, id, data) {
   return serializePurchase(updated);
 }
 export async function cancelPurchase(userId, id) {
-  await prisma.$transaction(async (db) => {
-    const purchase = await db.cardPurchase.findFirst({ where: { id, userId }, include: { installments: { include: { invoice: true } } } });
-    if (!purchase) throw new AppError("Compra não encontrada", 404, "PURCHASE_NOT_FOUND");
-    if (purchase.status === "CANCELLED") return;
-    if (purchase.installments.some((item) => item.invoice.status === "PAID")) throw new AppError("Não é possível cancelar compra de fatura já paga", 409, "PURCHASE_IN_PAID_INVOICE");
-    await db.cardPurchase.update({ where: { id }, data: { status: "CANCELLED" } });
-    for (const installment of purchase.installments) {
-      await db.cardInstallment.update({ where: { id: installment.id }, data: { status: "CANCELLED" } });
-      await db.creditCardInvoice.update({ where: { id: installment.invoiceId }, data: { totalAmount: { decrement: installment.amount } } });
-    }
-  });
+  await prisma.$transaction((db) => cancelPurchaseInTransaction(db, userId, id));
 }
 
 export async function listInvoices(userId, cardId, query = {}) {
@@ -223,29 +262,105 @@ export async function listInvoices(userId, cardId, query = {}) {
     // An open invoice stays payable after its closing date. Filtering it out here
     // hid overdue/current invoices from the Cards screen and made their purchases
     // appear to vanish even though the installments were still pending.
-    where: { userId, creditCardId: cardId, ...(query.status === "all" || query.month ? {} : { status: "OPEN" }), ...(query.month ? { referenceYear: Number(query.month.slice(0, 4)), referenceMonth: Number(query.month.slice(5, 7)) } : {}) },
+    where: { userId, creditCardId: cardId, ...(query.status === "all" || query.month ? {} : { status: { not: "PAID" }, totalAmount: { gt: prisma.creditCardInvoice.fields.paidAmount } }), ...(query.month ? { referenceYear: Number(query.month.slice(0, 4)), referenceMonth: Number(query.month.slice(5, 7)) } : {}) },
     include: invoiceInclude,
     orderBy: [{ referenceYear: "desc" }, { referenceMonth: "desc" }],
   });
   return invoices.map(serializeInvoice);
 }
+async function lockInvoice(db, userId, id) {
+  const rows = await db.$queryRaw`SELECT "id" FROM "CreditCardInvoice" WHERE "id" = ${id}::uuid AND "userId" = ${userId}::uuid FOR UPDATE`;
+  if (!rows.length) throw new AppError("Fatura não encontrada", 404, "INVOICE_NOT_FOUND");
+  return db.creditCardInvoice.findUniqueOrThrow({ where: { id }, include: { creditCard: { select: { name: true } } } });
+}
+
+async function requireActiveAccount(db, userId, accountId) {
+  const account = await db.account.findFirst({ where: { id: accountId, userId, isActive: true }, select: { id: true } });
+  if (!account) throw new AppError("Conta ativa não encontrada", 404, "ACCOUNT_NOT_FOUND");
+}
+
+function validatePaymentAmount(amount, available) {
+  if (amount.lte(0) || amount.gt(available)) {
+    throw new AppError("Informe um valor positivo de até o saldo da fatura", 409, "INVOICE_PAYMENT_EXCEEDS_BALANCE");
+  }
+}
+
+async function refreshInvoicePaymentState(db, invoice) {
+  const active = await db.transaction.aggregate({
+    where: { userId: invoice.userId, creditCardInvoiceId: invoice.id, status: "COMPLETED" },
+    _sum: { amount: true },
+    _max: { settledAt: true },
+  });
+  const paidAmount = active._sum.amount ?? new Prisma.Decimal(0);
+  const paid = paidAmount.gt(0) && paidAmount.eq(invoice.totalAmount);
+  if (paid !== (invoice.status === "PAID")) {
+    await db.cardInstallment.updateMany({
+      where: { userId: invoice.userId, invoiceId: invoice.id, status: paid ? "PENDING" : "PAID" },
+      data: { status: paid ? "PAID" : "PENDING" },
+    });
+  }
+  return db.creditCardInvoice.update({
+    where: { id: invoice.id },
+    data: { paidAmount, status: paid ? "PAID" : invoice.status === "PAID" ? "OPEN" : invoice.status, paidAt: paid ? active._max.settledAt : null },
+    include: invoiceInclude,
+  });
+}
+
 export async function payInvoice(userId, id, data) {
   const invoice = await prisma.$transaction(async (db) => {
-    const existing = await db.creditCardInvoice.findFirst({ where: { id, userId }, include: { creditCard: true } });
-    if (!existing) throw new AppError("Fatura não encontrada", 404, "INVOICE_NOT_FOUND");
+    const existing = await lockInvoice(db, userId, id);
+    if (data.paymentId && await db.transaction.findUnique({ where: { id: data.paymentId }, select: { id: true } })) {
+      throw new AppError("Este pagamento já foi registrado", 409, "INVOICE_PAYMENT_DUPLICATE");
+    }
     if (existing.status === "PAID") throw new AppError("Esta fatura já foi paga", 409, "INVOICE_ALREADY_PAID");
-    if (new Prisma.Decimal(existing.totalAmount).lessThanOrEqualTo(0)) throw new AppError("Esta fatura não possui valor a pagar", 409, "INVOICE_EMPTY");
-    const account = await db.account.findFirst({ where: { id: data.accountId, userId, isActive: true } });
-    if (!account) throw new AppError("Conta ativa não encontrada", 404, "ACCOUNT_NOT_FOUND");
+    const available = invoiceBalance(existing);
+    if (available.lte(0)) throw new AppError("Esta fatura não possui valor a pagar", 409, "INVOICE_EMPTY");
+    const amount = data.amount === undefined ? available : new Prisma.Decimal(data.amount);
+    validatePaymentAmount(amount, available);
+    await requireActiveAccount(db, userId, data.accountId);
     const category = await db.category.findFirst({
       where: { userId, type: "EXPENSE", isActive: true, normalizedName: normalizeName("Outros") },
     }) ?? await db.category.findFirst({ where: { userId, type: "EXPENSE", isActive: true } });
     if (!category) throw new AppError("Cadastre uma categoria de despesa ativa antes de pagar a fatura", 409, "EXPENSE_CATEGORY_NOT_FOUND");
-    const paymentDate = asDate(data.date ?? new Date().toISOString().slice(0, 10));
-    const transaction = await db.transaction.create({ data: { userId, accountId: account.id, categoryId: category.id, type: "EXPENSE", description: `Pagamento da fatura ${existing.creditCard.name} ${String(existing.referenceMonth).padStart(2, "0")}/${existing.referenceYear}`, amount: existing.totalAmount, date: paymentDate, status: "COMPLETED", settledAt: paymentDate, paymentMethod: data.paymentMethod || "PIX", notes: nullable(data.notes), creditCardInvoiceId: existing.id } });
-    await db.account.update({ where: { id: account.id }, data: { currentBalance: { decrement: existing.totalAmount } } });
-    await db.cardInstallment.updateMany({ where: { userId, invoiceId: existing.id, status: "PENDING" }, data: { status: "PAID" } });
-    return db.creditCardInvoice.update({ where: { id: existing.id }, data: { status: "PAID", paidAt: paymentDate }, include: { paymentTransaction: { select: { id: true, account: { select: { name: true } } } } } });
+    const date = asDate(data.date ?? brazilianDate());
+    const description = `Pagamento da fatura ${existing.creditCard.name} ${String(existing.referenceMonth).padStart(2, "0")}/${existing.referenceYear}`;
+    await db.transaction.create({
+      data: {
+        id: data.paymentId, userId, accountId: data.accountId, categoryId: category.id, type: "EXPENSE",
+        description, amount, date, status: "COMPLETED", settledAt: date, paymentMethod: data.paymentMethod || "PIX",
+        notes: nullable(data.notes), creditCardInvoiceId: existing.id,
+      },
+    });
+    await db.account.update({ where: { id: data.accountId }, data: { currentBalance: { decrement: amount } } });
+    return refreshInvoicePaymentState(db, existing);
+  });
+  return serializeInvoice(invoice);
+}
+
+export async function changeInvoicePayment(userId, id, paymentId, data) {
+  const invoice = await prisma.$transaction(async (db) => {
+    const existing = await lockInvoice(db, userId, id);
+    const payment = await db.transaction.findFirst({
+      where: { id: paymentId, userId, creditCardInvoiceId: id, status: "COMPLETED" },
+    });
+    if (!payment) throw new AppError("Pagamento ativo não encontrado", 404, "INVOICE_PAYMENT_NOT_FOUND");
+    if (!data) {
+      await db.transaction.update({ where: { id: paymentId }, data: { status: "CANCELLED" } });
+      await db.account.update({ where: { id: payment.accountId }, data: { currentBalance: { increment: payment.amount } } });
+    } else {
+      const amount = new Prisma.Decimal(data.amount ?? payment.amount);
+      const accountId = data.accountId ?? payment.accountId;
+      const date = data.date ? asDate(data.date) : payment.date;
+      validatePaymentAmount(amount, invoiceBalance(existing).plus(payment.amount));
+      if (accountId !== payment.accountId) await requireActiveAccount(db, userId, accountId);
+      const adjustments = new Map([[payment.accountId, payment.amount]]);
+      adjustments.set(accountId, (adjustments.get(accountId) ?? new Prisma.Decimal(0)).minus(amount));
+      for (const account of [...adjustments.keys()].sort()) {
+        await db.account.update({ where: { id: account }, data: { currentBalance: { increment: adjustments.get(account) } } });
+      }
+      await db.transaction.update({ where: { id: paymentId }, data: { accountId, amount, date, settledAt: date } });
+    }
+    return refreshInvoicePaymentState(db, existing);
   });
   return serializeInvoice(invoice);
 }

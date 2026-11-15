@@ -39,10 +39,10 @@ describe.sequential("fatura mensal e gráficos no corte do fechamento", () => {
     const invoiceId = (await agent.get(`/api/cards/${cardId}/invoices?month=2026-10`)).body.invoices[0].id;
     expect((await agent.post(`/api/invoices/${invoiceId}/pay`).send({ accountId, date: "2026-11-01", paymentMethod: "PIX" })).status).toBe(200);
     const october = (await dash("2026-10")).body;
-    expect(october.summary).toMatchObject({ paidExpenses: "10", pendingBills: "0", invoiceTotal: "10" });
+    expect(october.summary).toMatchObject({ paidExpenses: "0", pendingBills: "0", invoiceTotal: "0" });
     expect(october.monthlySeries.at(-1).expense).toBe("10"); expect(october.expenseBreakdown[0].amount).toBe("10");
     const november = (await dash("2026-11")).body;
-    expect(november.summary).toMatchObject({ paidExpenses: "0", pendingBills: "50", invoiceTotal: "50" });
+    expect(november.summary).toMatchObject({ paidExpenses: "10", pendingBills: "50", invoiceTotal: "50" });
     expect(november.monthlySeries.at(-1).expense).toBe("50");
     expect((await agent.get(`/api/cards/${cardId}/invoices?month=2026-10`)).body.invoices[0].status).toBe("PAID");
     const cash = (await agent.get("/api/dashboard?month=2026-11")).body;

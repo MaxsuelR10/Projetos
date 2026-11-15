@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   cancelPurchaseHandler,
+  changeInvoicePaymentHandler,
   create,
   createPurchaseHandler,
   getById,
@@ -17,8 +18,10 @@ import { validate } from "../middlewares/validate.middleware.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import {
   cardIdSchema,
+  cancelInvoicePaymentSchema,
   createCardSchema,
   createPurchaseSchema,
+  editInvoicePaymentSchema,
   invoiceIdSchema,
   listCardsSchema,
   listInvoicesSchema,
@@ -45,6 +48,8 @@ cardRouter.post("/:id/purchases", validate(createPurchaseSchema), asyncHandler(c
 
 invoiceRouter.use(requireAuth);
 invoiceRouter.post("/:id/pay", validate(payInvoiceSchema), asyncHandler(payInvoiceHandler));
+invoiceRouter.patch("/:id/payments/:paymentId", validate(editInvoicePaymentSchema), asyncHandler(changeInvoicePaymentHandler));
+invoiceRouter.delete("/:id/payments/:paymentId", validate(cancelInvoicePaymentSchema), asyncHandler(changeInvoicePaymentHandler));
 
 purchaseRouter.use(requireAuth);
 purchaseRouter.patch("/:id", validate(updatePurchaseSchema), asyncHandler(updatePurchaseHandler));

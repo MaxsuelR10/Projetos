@@ -7,7 +7,7 @@ const FIELDS = {
   categories: ['id', 'name', 'icon', 'color', 'budget'],
   transactions: ['id', 'description', 'amount', 'type', 'date', 'dueDate', 'settledAt', 'status', 'accountId', 'toAccountId', 'categoryId', 'cardId', 'installmentCount', 'hidden', 'source', 'invoicePaymentId', 'recurringTransactionId', 'recurrenceDate', 'recurrenceOccurrence', 'isSubscription', 'subscriptionId'],
   cards: ['id', 'name', 'last4', 'accountId', 'limit', 'closingDay', 'dueDay', 'color'],
-  invoicePayments: ['id', 'cardId', 'month', 'accountId', 'date', 'amount'],
+  invoicePayments: ['id', 'cardId', 'month', 'accountId', 'date', 'amount', 'cancelledAt'],
   installments: ['id', 'name', 'amount', 'totalAmount', 'paidAmount', 'count', 'paid', 'accountId', 'categoryId', 'hidden'],
   subscriptions: ['id', 'name', 'amount', 'cycle', 'nextDate', 'accountId', 'categoryId', 'cardId', 'active', 'recurrenceId'],
   investments: ['id', 'name', 'kind', 'amount'],

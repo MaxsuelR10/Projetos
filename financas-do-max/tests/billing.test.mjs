@@ -58,7 +58,7 @@ test('caixa usa liquidação e orçamento consome a compra sem duplicar a fatura
   const s=fixture();purchase(s);pay(s);
   assert.equal(totals(monthlyRows(s,'2026-10')).expense,10001);
   assert.equal(financialReport(s,'2026-10',{basis:'cash'}).summary.expense,3334);
-  assert.equal(categoryTotals(s,'2026-10').find(c=>c.id==='shopping').total,10001);
+  assert.equal(categoryTotals(s,'2026-10').find(c=>c.id==='shopping').total,3334);
   assert.equal(categoryTotals(s,'2026-10').find(c=>c.id==='other').total,0);
   assert.equal(pendingExpenses(s,'2026-10'),0);assert.equal(pendingExpenses(s,'2026-11'),3334);
 });

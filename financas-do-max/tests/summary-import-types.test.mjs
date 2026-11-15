@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {summaryFor,sortSelectOptions,uncategorizedOption} from '../dist/summary.mjs';
-import {seedState,parseCSV,validateState,accountBalance} from '../dist/domain.mjs';
-import {invoiceFor,registerInvoicePayment} from '../dist/billing.mjs';
+import {seedState,parseCSV,validateState,accountBalance,categoryTotals,financialReport} from '../dist/domain.mjs';
+import {invoiceFor,registerInvoicePayment,editInvoicePayment,cancelInvoicePayment,creditInstallmentPlans,assertPurchaseAllowed} from '../dist/billing.mjs';
 import {applyCsvType,previewCsvImport,buildCsvImport,planCsvTypeCorrection} from '../dist/csv-import.mjs';
 
 function fixture(){
@@ -62,18 +62,18 @@ test('faturas do mês atual somam dois cartões pelo vencimento e batem com a te
   const today='2026-11-12';
   const report=summaryFor(s,'2026-11',{today});
   assert.deepEqual(report.invoices.map(i=>[i.cardId,i.total,i.status]),[
-    ['nubank',12000,'paid'],['inter',12000,'open'],
+    ['inter',12000,'open'],
   ]);
-  assert.equal(report.invoiceTotal,24000);
+  assert.equal(report.invoiceTotal,12000);
   assert.equal(report.payable,12000);
   assert.equal(report.spending,22000);
   assert.ok(report.rows.every(row=>row.effectiveDate==='2026-11-23'));
   assert.equal(summaryFor(s,'2026-11',{today,cardId:inter.id}).invoiceTotal,invoiceFor(s,inter,'2026-11').total);
-  assert.equal(summaryFor(s,'2026-11',{today:'2026-12-01'}).invoiceTotal,24000);
+  assert.equal(summaryFor(s,'2026-11',{today:'2026-12-01'}).invoiceTotal,12000);
   assert.equal(summaryFor(s,'2026-12',{today}).invoiceTotal,9000);
 });
 
-test('fatura do mês seguinte é sinalizada sem entrar na soma e gastos sem categoria aparecem no resumo',()=>{
+test('faturas futuras aparecem na própria competência e gastos sem categoria aparecem no resumo',()=>{
   const s=fixture();
   s.transactions.find(t=>t.id==='i-market').categoryId='';
   const october=summaryFor(s,'2026-10');
@@ -86,7 +86,88 @@ test('fatura do mês seguinte é sinalizada sem entrar na soma e gastos sem cate
   s.transactions.find(t=>t.id==='n-market').date='2026-10-04';
   const report=summaryFor(s,'2026-10');
   assert.equal(report.invoiceTotal,7000);
-  assert.deepEqual(report.invoices.find(i=>i.cardId==='nubank').nextInvoice,{month:'2026-11',total:8000});
+  assert.deepEqual(report.invoices.map(i=>i.cardId),['inter']);
+  assert.equal(summaryFor(s,'2026-11').invoices.find(i=>i.cardId==='nubank').remainingAmount,8000);
+});
+
+test('novembro mostra Nubank e Inter pelo saldo e mantém categorias, caixa e histórico reconciliados',()=>{
+  const s=fixture(),[nubank,inter]=s.cards;
+  Object.assign(nubank,{closingDay:16,dueDay:20});
+  Object.assign(inter,{closingDay:6,dueDay:12});
+  const purchase=(card,id,date,amount,categoryId='transport',installmentCount=1)=>({
+    id,description:id,cardId:card.id,accountId:card.accountId,date,amount,categoryId,installmentCount,type:'expense',status:'completed',
+  });
+  s.transactions=[
+    purchase(nubank,'Nubank combustível','2026-10-22',15000),
+    purchase(inter,'Inter combustível','2026-10-22',10000),
+    purchase(nubank,'Nubank alimentação','2026-10-26',20000,'food'),
+    purchase(inter,'Inter alimentação','2026-10-26',8000,'food'),
+    purchase(nubank,'Compra em três vezes','2026-10-22',60000,'shopping',3),
+    purchase(inter,'Compra anterior','2026-10-05',5000,'food'),
+  ];
+  s.categories.find(c=>c.id==='transport').name='Combustível';
+  const month='2026-11',today='2026-11-15';
+  const get=(state=s)=>summaryFor(state,month,{today});
+  const pending=(state=s)=>get(state).invoices.map(i=>[i.cardId,i.remainingAmount,i.status,i.dueDate]);
+  const pay=(state,card,amount,id)=>registerInvoicePayment(state,{cardId:card.id,month,accountId:card.accountId,date:'2026-11-15',amount,id});
+  assert.deepEqual(pending(),[
+    ['nubank',55000,'open','2026-11-20'],['inter',18000,'overdue','2026-11-12'],
+  ]);
+  assert.equal(get().invoiceTotal,73000);
+  assert.deepEqual(get().overdueInvoices.map(i=>[i.cardId,i.month,i.remainingAmount]),[['inter','2026-10',5000]]);
+  assert.equal(summaryFor(s,'2026-12',{today:'2026-12-01'}).overdueInvoiceTotal,78000);
+  assert.deepEqual(['2026-11','2026-12','2027-01'].map(reference=>invoiceFor(s,nubank,reference).items.find(i=>i.transactionId==='Compra em três vezes').amount),[20000,20000,20000]);
+  assert.equal(get().categories.find(c=>c.name==='Combustível').total,25000);
+  assert.equal(get().categories.find(c=>c.id==='food').total,28000);
+  const opposite=structuredClone(s);
+  pay(opposite,inter,undefined,'inter-first');
+  assert.deepEqual(pending(opposite).map(([id])=>id),['nubank']);
+
+  const before=accountBalance(s,'bank');
+  pay(s,nubank,12000,'partial');
+  assert.equal(get().invoiceTotal,61000);
+  assert.equal(accountBalance(s,'bank'),before-12000);
+  assert.throws(()=>pay(s,nubank,12000,'partial'),/já utilizado/);
+  assert.throws(()=>pay(s,nubank,43001,'too-much'),/saldo da fatura/);
+  assert.equal(accountBalance(s,'bank'),before-12000);
+  editInvoicePayment(s,'partial',{accountId:'bank',date:'2026-11-15',amount:4000});
+  assert.equal(get().invoiceTotal,69000);
+  assert.equal(accountBalance(s,'bank'),before-4000);
+  assert.ok(creditInstallmentPlans(s)[0].paidAmount<=4000);
+
+  pay(s,nubank,undefined,'rest');
+  assert.deepEqual(pending().map(([id])=>id),['inter']);
+  assert.equal(accountBalance(s,'bank'),before-55000);
+  const paid=invoiceFor(s,nubank,month,today);
+  assert.equal(paid.status,'paid');
+  assert.equal(paid.total,55000);
+  assert.equal(paid.remainingAmount,0);
+  assert.equal(paid.paidAmount,55000);
+  assert.equal(paid.payments.length,2);
+  assert.equal(paid.items.length,3);
+  assert.equal(financialReport(s,month).summary.expense,55000);
+  assert.equal(categoryTotals(s,month).find(c=>c.name==='Combustível').total,25000);
+  assert.throws(()=>pay(s,nubank,undefined,'again'),/já foi paga/);
+
+  pay(s,inter,undefined,'inter-last');
+  assert.deepEqual(pending(),[]);
+  assert.equal(get().invoiceTotal,0);
+  assert.equal(get().spending,73000);
+  assert.equal(get().overdueInvoiceTotal,5000);
+  cancelInvoicePayment(s,'rest',today);
+  assert.throws(()=>cancelInvoicePayment(s,'rest',today),/ativo/);
+  const reopened=invoiceFor(s,nubank,month,today);
+  assert.equal(reopened.remainingAmount,51000);
+  assert.equal(reopened.payments.find(p=>p.id==='rest').cancelledAt,today);
+  assert.equal(accountBalance(s,'bank'),before-4000);
+  assert.equal(get().categories.find(c=>c.name==='Combustível').total,25000);
+  validateState(JSON.parse(JSON.stringify(s)));
+  const newPurchase=purchase(nubank,'Compra durante pagamento parcial','2026-11-14',500);
+  assertPurchaseAllowed(s,newPurchase);
+  s.transactions.push(newPurchase);
+  assert.equal(get().invoiceTotal,51500);
+  assert.equal(get().categories.find(c=>c.name==='Combustível').total,25500);
+  validateState(s);
 });
 
 test('tipo escolhido prevalece sobre sinal positivo e é usado na prévia, duplicatas e gravação',()=>{

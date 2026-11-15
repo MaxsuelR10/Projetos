@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../config/database.js";
 import { AppError } from "../utils/app-error.js";
-import { cancelPurchaseInTransaction, createPurchaseInTransaction } from "./card.service.js";
+import { cancelPurchaseInTransaction, createPurchaseInTransaction, lockCards } from "./card.service.js";
 
 const relationSelect = {
   account: { select: { id: true, name: true, color: true } },
@@ -155,6 +155,7 @@ export async function updateTransaction(userId, id, data) {
       include: { cardPurchase: { select: { installmentsCount: true } } },
     });
     if (!existing) throw new AppError("Lan\u00e7amento n\u00e3o encontrado", 404, "TRANSACTION_NOT_FOUND");
+    if (existing.creditCardInvoiceId) throw new AppError("Altere o pagamento no histórico da fatura", 409, "INVOICE_PAYMENT_PROTECTED");
     if (existing.status === "CANCELLED") throw new AppError("Um lan\u00e7amento cancelado n\u00e3o pode ser alterado", 409, "TRANSACTION_CANCELLED");
 
     const next = {
@@ -191,6 +192,7 @@ export async function updateTransaction(userId, id, data) {
     // financial fields changes, replace the pending purchase atomically so the
     // invoice and the transaction always describe the same operation.
     if (rebuildsCardPurchase) {
+      await lockCards(db, userId, [existing.creditCardId, nextCardId]);
       await cancelPurchaseInTransaction(db, userId, existing.cardPurchaseId);
 
       if (nextPaymentMethod === "CREDIT_CARD" && !nextCardId) {

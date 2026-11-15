@@ -1,23 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '../components/feedback/EmptyState.jsx'
 import { useAuth } from '../hooks/useAuth.js'
 import { accountService } from '../services/account.service.js'
 import { cardService } from '../services/card.service.js'
 import { categoryService } from '../services/category.service.js'
-import { formatCurrency, parseCurrency } from '../utils/formatters.js'
+import { brazilianCivilDate, formatCurrency, parseCurrency } from '../utils/formatters.js'
 import { getApiError } from '../utils/get-api-error.js'
 import { CurrencyInput } from '../components/forms/CurrencyInput.jsx'
 import { useConfirm } from '../hooks/useConfirm.js'
 import { useToast } from '../hooks/useToast.js'
 import { FormDrawer } from '../components/feedback/FormDrawer.jsx'
 import { useSearchParams } from 'react-router-dom'
+import { notifyFinancialDataChanged } from '../utils/financial-events.js'
 
-const today = new Date().toISOString().slice(0, 10)
+const today = brazilianCivilDate()
 const emptyCard = { name: '', institution: '', brand: '', type: 'CREDIT', creditLimit: '', closingDay: '25', dueDay: '5', color: '#263B71' }
 const emptyPurchase = { categoryId: '', subcategoryId: '', description: '', merchant: '', totalAmount: '', purchaseDate: today, installmentsCount: '1', notes: '' }
 
 function invoiceLabel(invoice) { return `${String(invoice.referenceMonth).padStart(2, '0')}/${invoice.referenceYear}` }
 function formatDate(value) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC' }).format(new Date(value)) }
+const invoiceStatusLabels = { OPEN: 'Aberta', CLOSED: 'Fechada', OVERDUE: 'Atrasada', PAID: 'Paga' }
+const emptyPayment = { accountId: '', date: '', amount: '' }
 
 export function CardsPage() {
   const [searchParams] = useSearchParams()
@@ -33,7 +36,10 @@ export function CardsPage() {
   const [purchases, setPurchases] = useState([])
   const [cardForm, setCardForm] = useState(emptyCard)
   const [purchaseForm, setPurchaseForm] = useState(emptyPurchase)
-  const [payment, setPayment] = useState({ accountId: '' })
+  const [payment, setPayment] = useState(emptyPayment)
+  const [editingPayment, setEditingPayment] = useState(null)
+  const paymentBusy = useRef(false)
+  const paymentAttempt = useRef(null)
   const [formOpen, setFormOpen] = useState(false)
   const [purchaseFormOpen, setPurchaseFormOpen] = useState(false)
   const [editingCard, setEditingCard] = useState(null)
@@ -88,11 +94,51 @@ export function CardsPage() {
       setPurchaseForm((current) => ({ ...emptyPurchase, categoryId: current.categoryId, purchaseDate: today })); setPurchaseFormOpen(false); await load()
     } catch (requestError) { setError(getApiError(requestError)) } finally { setIsSubmitting(false) }
   }
-  async function pay(invoice) {
+  async function savePayment(action, confirmation, message) {
+    if (paymentBusy.current) return
+    paymentBusy.current = true
+    setIsSubmitting(true)
+    try {
+      if (!(await requestConfirmation(confirmation))) return
+      const updated = await action()
+      setInvoices((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setPayment(emptyPayment)
+      setEditingPayment(null)
+      paymentAttempt.current = null
+      notifyFinancialDataChanged()
+      toast.success(message)
+      await load()
+    } catch (requestError) {
+      toast.error(getApiError(requestError))
+    } finally {
+      paymentBusy.current = false
+      setIsSubmitting(false)
+    }
+  }
+  function pay(invoice) {
     if (!payment.accountId) { toast.error('Selecione a conta para registrar o pagamento.'); return }
-    if (!(await requestConfirmation({ title: 'Pagar fatura?', message: `A fatura ${invoiceLabel(invoice)} no valor de ${formatCurrency(invoice.totalAmount, user.currency)} será debitada da conta selecionada.`, confirmLabel: 'Pagar fatura' }))) return
-    setIsSubmitting(true); setError('')
-    try { await cardService.payInvoice(invoice.id, payment); toast.success('Fatura paga com sucesso.'); await load() } catch (requestError) { toast.error(getApiError(requestError)) } finally { setIsSubmitting(false) }
+    const existing = editingPayment?.invoiceId === invoice.id ? editingPayment : null
+    const amount = payment.amount ? parseCurrency(payment.amount) : existing?.amount
+    const displayAmount = amount ?? invoice.remainingAmount
+    const data = { accountId: payment.accountId, date: payment.date || undefined, amount }
+    const signature = JSON.stringify([invoice.id, data])
+    function request() {
+      if (existing) return cardService.editInvoicePayment(invoice.id, existing.id, data)
+      if (paymentAttempt.current?.signature !== signature) paymentAttempt.current = { signature, id: window.crypto.randomUUID() }
+      return cardService.payInvoice(invoice.id, { ...data, paymentId: paymentAttempt.current.id })
+    }
+    void savePayment(request, {
+      title: existing ? 'Alterar pagamento?' : 'Registrar pagamento?',
+      message: `${formatCurrency(displayAmount, user.currency)} para a fatura de ${invoiceLabel(invoice)}.`,
+      confirmLabel: existing ? 'Salvar pagamento' : 'Registrar pagamento',
+    }, existing ? 'Pagamento atualizado.' : 'Pagamento registrado.')
+  }
+  function cancelPayment(invoice, record) {
+    void savePayment(() => cardService.cancelInvoicePayment(invoice.id, record.id), {
+      title: 'Cancelar pagamento?',
+      message: `${formatCurrency(record.amount, user.currency)} volta para o saldo da conta de pagamento.`,
+      confirmLabel: 'Cancelar pagamento', destructive: true,
+    }, 'Pagamento cancelado.')
   }
   async function cancelPurchase(purchase) {
     if (!(await requestConfirmation({ title: 'Cancelar compra?', message: `A compra “${purchase.description}” e suas parcelas pendentes serão canceladas.`, confirmLabel: 'Cancelar compra', destructive: true, icon: '!' }))) return
@@ -122,9 +168,9 @@ export function CardsPage() {
         <div className="section-heading"><div><p className="eyebrow">Faturas</p><h2>Fatura selecionada · {invoiceMonth}</h2></div></div>
         {visibleInvoices.length === 0 ? <EmptyState title="Sem fatura neste mês" description="Selecione outro mês para consultar as demais faturas." /> : <div className="invoice-list">
           {visibleInvoices.map((invoice) => {
-            const hasAmountDue = Number(invoice.totalAmount) > 0
-            const isPayable = invoice.status !== 'PAID' && hasAmountDue
-            const statusLabel = invoice.effectiveStatus === 'PAID' ? 'Paga' : invoice.effectiveStatus === 'CLOSED' ? 'Fechada' : 'Aberta'
+            const isPayable = Number(invoice.remainingAmount) > 0
+            const isEditing = editingPayment?.invoiceId === invoice.id
+            const statusLabel = invoiceStatusLabels[invoice.effectiveStatus]
 
             return <article className="invoice-card" key={invoice.id}>
               <div>
@@ -132,14 +178,25 @@ export function CardsPage() {
                 <h3>Fatura {invoiceLabel(invoice)}</h3>
                 <small>Fecha em {formatDate(invoice.closingDate)} · Vence em {formatDate(invoice.dueDate)} · {invoice.installments.length} lançamento(s)</small>
               </div>
-              <strong>{formatCurrency(invoice.totalAmount, user.currency)}</strong>
-              {isPayable ? <div className="invoice-pay">
-                <select value={payment.accountId} onChange={(event) => setPayment((current) => ({ ...current, accountId: event.target.value }))}>
+              <strong>Original {formatCurrency(invoice.totalAmount, user.currency)}</strong>
+              <p>Pago {formatCurrency(invoice.paidAmount, user.currency)} · Saldo {formatCurrency(invoice.remainingAmount, user.currency)}</p>
+              {isPayable || isEditing ? <div className="invoice-pay">
+                <select aria-label="Conta de pagamento" value={payment.accountId} onChange={(event) => setPayment((current) => ({ ...current, accountId: event.target.value }))}>
                   <option value="">Conta de pagamento</option>
                   {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
                 </select>
-                <button type="button" className="primary-button inline-button" disabled={isSubmitting} onClick={() => pay(invoice)}>Pagar</button>
+                <label className="form-field"><span>Valor pago</span><CurrencyInput name="amount" value={payment.amount || (isEditing ? editingPayment.amount : invoice.remainingAmount)} onChange={(event) => setPayment((current) => ({ ...current, amount: event.target.value }))} /></label>
+                <label className="form-field"><span>Data do pagamento</span><input type="date" value={payment.date} onChange={(event) => setPayment((current) => ({ ...current, date: event.target.value }))} /></label>
+                <button type="button" className="primary-button inline-button" disabled={isSubmitting} onClick={() => pay(invoice)}>{isEditing ? 'Salvar pagamento' : 'Pagar'}</button>
+                {isEditing ? <button type="button" className="secondary-button" onClick={() => { setEditingPayment(null); setPayment(emptyPayment) }}>Fechar edição</button> : null}
               </div> : <p className="muted-copy">{invoice.status === 'PAID' ? 'Pagamento registrado.' : 'Sem valores pendentes para pagar.'}</p>}
+              {invoice.payments.length > 0 ? <details open={isEditing}><summary>Histórico de pagamentos</summary>{invoice.payments.map((record) => <div className="invoice-pay" key={record.id}>
+                <p>{formatDate(record.date)} · {record.account?.name} · {formatCurrency(record.amount, user.currency)}{record.status === 'CANCELLED' ? ` · Cancelado em ${formatDate(record.updatedAt)}` : ''}</p>
+                {record.status === 'COMPLETED' ? <>
+                  <button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => { setEditingPayment({ ...record, invoiceId: invoice.id }); setPayment({ accountId: record.accountId, date: record.date.slice(0, 10), amount: '' }) }}>Editar pagamento</button>
+                  <button type="button" className="danger-action" disabled={isSubmitting} onClick={() => cancelPayment(invoice, record)}>Cancelar pagamento</button>
+                </> : null}
+              </div>)}</details> : null}
               <details><summary>Ver compras e parcelas</summary>{invoice.installments.map((item) => <p key={item.id}>{item.purchase.description} · {item.number}/{item.purchase.installmentsCount} · {formatCurrency(item.amount, user.currency)}</p>)}</details>
             </article>
           })}

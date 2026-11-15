@@ -1,3 +1,11 @@
+export function brazilianDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const get = (type) => parts.find((part) => part.type === type).value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 export function monthBounds(value) {
   const [year, month] = (value || new Date().toISOString().slice(0, 7)).split("-").map(Number);
   return {
