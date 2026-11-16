@@ -12,6 +12,25 @@ install-app[hidden]{display:none} .install-card{display:flex;align-items:center;
 
 body.modal-is-open { overflow: hidden; }
 .backdrop { background: rgb(0 0 0 / 65%); }
+.pwa-status { position: relative; z-index: 55; margin: 0; padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left)); background: #172a43; color: #fff; text-align: center; font-size: 14px; }
+.pwa-status[hidden] { display: none; }
+.pwa-status .btn { margin-inline: 8px; }
+@media (max-width: 900px), (display-mode: standalone) and (pointer: coarse) {
+  .backdrop {
+    top: var(--visible-top, 0px);
+    bottom: auto;
+    height: 100vh;
+    height: var(--visible-height, 100dvh);
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  }
+  .modal { max-height: 100%; overflow: auto; overscroll-behavior: contain; }
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+  .form-footer { flex-wrap: wrap; }
+  .mobile-bottom-nav { padding-left: max(4px, env(safe-area-inset-left)); padding-right: max(4px, env(safe-area-inset-right)); }
+  .sidebar.mobile-open { padding-top: max(16px, env(safe-area-inset-top)); }
+  .auth-page { min-height: 100dvh; padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .pwa-status { padding-top: max(10px, env(safe-area-inset-top)); }
+}
 .summary-scope { margin: 16px 0 6px; font-size: 13px; color: var(--muted); }
 .summary-help { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .summary-help summary { cursor: pointer; padding: 8px 0; }

@@ -12,7 +12,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
     <title>Finanças do Max</title>
     <link rel="manifest" href="/manifest.webmanifest">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" href="./finance-icon.png">
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="./auth.css">
@@ -22,9 +22,16 @@
     <link rel="stylesheet" href="./notifications.css">
     <link rel="stylesheet" href="./mobile-app.css">
     <script defer src="./install-app.js"></script>
+    <script type="module" src="./pwa-status.mjs"></script>
     <script type="module" src="./app.mjs"></script>
   </head>
   <body>
+    <p id="connection-status" class="pwa-status" role="status" hidden>Sem conexão. Reconecte para sincronizar seus dados.</p>
+    <div id="release-status" class="pwa-status" hidden>
+      <span role="status">Uma nova versão está disponível.</span>
+      <button type="button" class="btn">Atualizar aplicativo</button>
+      <span id="release-feedback" role="status"></span>
+    </div>
     <div id="app"></div>
     <div id="modal-root"></div>
     <div id="toast" role="status" aria-live="polite"></div>

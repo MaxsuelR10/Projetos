@@ -24,7 +24,10 @@ export function createNotificationUI({getState,e,toast,refresh,platform=globalTh
       registration=await navigator.serviceWorker.register('/sw.js',{scope:'/'});
       await navigator.serviceWorker.ready;
       subscription=await registration.pushManager.getSubscription();
-      if(subscription&&config.configured&&Notification.permission==='granted')await api('subscribe',subscription.toJSON());
+      if(subscription&&config.configured&&Notification.permission==='granted'){
+        try{await api('subscribe',subscription.toJSON());}
+        catch(error){subscription=null;throw error;}
+      }
     } catch{status='Serviço de notificações indisponível. Tente novamente mais tarde.';}
   }
   async function disable({logout=false}={}) {
@@ -40,6 +43,8 @@ export function createNotificationUI({getState,e,toast,refresh,platform=globalTh
         const permission=await Notification.requestPermission();
         if(permission!=='granted')throw new Error('Permissão não concedida. Você pode ativar os avisos depois.');
         const raw=atob(config.publicKey.replace(/-/g,'+').replace(/_/g,'/'));
+        const existing=await registration.pushManager.getSubscription();
+        if(existing&&!subscription)await existing.unsubscribe();
         subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:Uint8Array.from(raw,c=>c.charCodeAt(0))});
         try{await api('subscribe',subscription.toJSON());}catch(error){await subscription.unsubscribe();subscription=null;throw error;}
         toast('Notificações ativadas neste celular.');

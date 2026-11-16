@@ -1,6 +1,16 @@
 // No financial data or authenticated responses are cached on the device.
 self.addEventListener('install',()=>self.skipWaiting());
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || request.mode !== 'navigate' ||
+      url.origin !== self.location.origin || url.pathname !== '/') return;
+  event.respondWith(fetch(request, {cache: 'no-store'}).catch(() => new Response(
+    '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Finanças do Max</title><main><h1>Sem conexão</h1><p>Conecte-se à internet e recarregue para abrir o Finanças do Max.</p><a href="/">Tentar novamente</a></main></html>',
+    {status: 503, headers: {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store'}}
+  )));
+});
 self.addEventListener('push',event=>{
   let payload={};try{payload=event.data?.json()||{};}catch{}
   const url=typeof payload.url==='string'&&payload.url.startsWith('/#/')?payload.url:'/#/notifications';

@@ -22,6 +22,7 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       if(req.method!=='GET'&&!req.headers['content-type']?.startsWith('application/json'))return send(415,{error:'JSON obrigatório.'});
       if(req.method!=='GET'&&!req.headers.origin)return send(403,{error:'Origem obrigatória.'});
       const path=new URL(req.url,'http://localhost').pathname;
+      if(path==='/api/release'&&req.method==='GET')return send(200,{release:env.VERCEL_DEPLOYMENT_ID||env.VERCEL_URL||null});
       if(path==='/api/notifications/cron'&&req.method==='GET'){
         if(!cronAuthorized(req.headers.authorization,env.CRON_SECRET))return send(401,{error:'Não autorizado.'});
         const result=await push.run();return send(result.failed?503:200,result);
@@ -37,8 +38,13 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
         res.setHeader('Set-Cookie',await auth.resetPassword(await body(req),req.headers.origin));
         return send(200,{ok:true});
       }
-      if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie',await auth.logout(req));return send(200,{ok:true});}
+      const expectedUser=req.headers['x-financas-user'];
+      if(path==='/api/logout'&&req.method==='POST'){
+        if(expectedUser!==undefined&&(await auth.user(req))?.id!==expectedUser)return send(409,{error:'A sessão mudou. Recarregue a página.'});
+        res.setHeader('Set-Cookie',await auth.logout(req));return send(200,{ok:true});
+      }
       const user=await auth.user(req);if(!user?.id)return send(401,{error:'Entre na sua conta para continuar.'});
+      if(expectedUser!==undefined&&expectedUser!==user.id)return send(409,{error:'A conta ativa mudou. Recarregue a página.'});
       if(path==='/api/notifications/status'&&req.method==='GET')return send(200,push.status());
       if(path==='/api/notifications/subscribe'&&req.method==='POST')return send(200,await push.subscribe(user.id,await body(req)));
       if(path==='/api/notifications/unsubscribe'&&req.method==='POST')return send(200,await push.remove(user.id,(await body(req))?.endpoint));
@@ -68,6 +74,7 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       const store=storeFactory(env.DATABASE_URL,'user:'+user.id);
       if(req.method==='GET')return send(200,await store.read());
       if(req.method!=='PUT')return send(405,{error:'Método não permitido.'});
+      if(expectedUser===undefined)return send(409,{error:'Atualize o aplicativo antes de salvar alterações.'});
       const input=await body(req);
       try{
         const previous=push.status().configured?(await store.read()).state:null;

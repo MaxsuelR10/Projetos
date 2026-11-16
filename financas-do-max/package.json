@@ -8,6 +8,8 @@
     "prisma:generate": "prisma generate",
     "postinstall": "prisma generate",
     "dev": "node server.mjs",
+    "build": "npm run prisma:generate && npm run check && npm run check:server && node --check dist/pwa-status.mjs && node --check dist/install-app.js && node --test tests/pwa.test.mjs",
+    "test:pwa:browser": "node scripts/test-pwa-browser.mjs",
     "test:neon": "node scripts/test-neon.mjs",
     "check:server": "node --check auth.mjs && node --check http-api.mjs && node --check max-ai.mjs && node --check storage.mjs && node --check api/index.mjs && node --check dist/auth-ui.mjs && node --check dist/remote-storage.mjs && node --check dist/ui-max-chat.mjs && node --check dist/max-financial-context.mjs && node --check push-service.mjs && node --check push-repository.mjs",
     "start": "node server.mjs",

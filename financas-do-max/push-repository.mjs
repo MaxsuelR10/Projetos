@@ -1,14 +1,15 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 export const subscriptionId=endpoint=>createHash('sha256').update(endpoint).digest('hex');
-export function createPushRepository(url) {
-  const sql=neon(url);
+export function createPushRepository(url, sql=neon(url)) {
   return {
     async subscribe(userId,subscription) {
       const id=subscriptionId(subscription.endpoint);
-      // A device belongs to its current signed-in account; never keep the previous user's alerts.
-      await sql`DELETE FROM public.financas_max_push_subscriptions WHERE id=${id} AND user_id<>${userId}`;
-      await sql`INSERT INTO public.financas_max_push_subscriptions(id,user_id,subscription) VALUES(${id},${userId},${JSON.stringify(subscription)}::jsonb) ON CONFLICT(id) DO UPDATE SET subscription=EXCLUDED.subscription`;
+      const rows=await sql`INSERT INTO public.financas_max_push_subscriptions(id,user_id,subscription)
+        VALUES(${id},${userId},${JSON.stringify(subscription)}::jsonb)
+        ON CONFLICT(id) DO UPDATE SET subscription=EXCLUDED.subscription
+        WHERE financas_max_push_subscriptions.user_id=EXCLUDED.user_id RETURNING id`;
+      if(!rows.length)throw Object.assign(new Error('Crie uma nova inscrição de notificações neste aparelho.'),{status:409});
     },
     async remove(userId,endpoint) {await sql`DELETE FROM public.financas_max_push_subscriptions WHERE id=${subscriptionId(endpoint)} AND user_id=${userId}`;},
     async subscriptions(userId) {return sql`SELECT id,user_id,subscription FROM public.financas_max_push_subscriptions WHERE user_id=${userId} ORDER BY created_at LIMIT 20`;},

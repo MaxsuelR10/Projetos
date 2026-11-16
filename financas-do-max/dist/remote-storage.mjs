@@ -17,6 +17,7 @@ export function createRemoteStorage({fetcher=fetch,onStatus=()=>{}}={}){
       return tail;
     },
     async flush(){await tail;if(failed)throw new Error('Sincronização interrompida.');return revision;},
-    get pending(){return pending;}
+    get pending(){return pending;},
+    get failed(){return failed;}
   };
 }
