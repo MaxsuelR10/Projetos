@@ -32,6 +32,12 @@ Abra http://127.0.0.1:4173. A porta pode ser alterada com a variável `PORT`.
 - CSV de extratos com prévia paginada, seleção de registros, duplicatas e projeção de saldo antes da confirmação; exportação CSV, backup/restauração JSON validada e limpeza para começar com dados próprios.
 - Interface responsiva, foco em diálogos, navegação por teclado e escape de conteúdo fornecido pelo usuário.
 
+## Recuperação de senha
+
+Na tela de login, selecione **Esqueci minha senha** e informe o endereço cadastrado. O Neon Auth envia o link para esse endereço. Depois de abrir o link e cadastrar a nova senha, selecione **Voltar para o login**.
+
+No Neon Auth, inclua a origem do aplicativo nos domínios confiáveis e use essa mesma origem em `APP_ORIGIN`. O remetente compartilhado do Neon envia e-mails de teste. Para produção, configure o SMTP no painel do Neon conforme a [documentação de e-mail do Neon Auth](https://neon.com/docs/auth/production-checklist#email-provider).
+
 ## Dados e integrações
 
 Os exemplos são **fictícios**. Os registros do projeto novo são persistidos no Neon em `public.financas_max_state`, em um documento JSONB validado que abrange todas as entidades e seus vínculos. As tabelas do sistema antigo permanecem independentes; seus dados ainda não foram migrados para o novo formato. Uma revisão numérica protege contra sobrescrita concorrente. A interface mostra o andamento de cada gravação e mantém uma cópia no navegador. Na primeira abertura, um espaço vazio recebe o estado local validado; nas seguintes, carrega o Neon. Uma versão local diferente é preservada na chave `STORE_KEY:before-neon`. Em caso de falha, exporte o backup antes de recarregar. O sistema interrompe novas alterações após falha de sincronização.
@@ -59,6 +65,8 @@ Cada ocorrência possui identidade por regra/data. Outra revisão não recria la
 O histórico registra alterações a partir desta versão, com até 300 eventos, 50 mudanças detalhadas por evento e textos limitados a 240 caracteres; informa truncamentos. É um recurso local de conferência, não uma auditoria imutável de servidor nem uma cópia integral de todos os dados antigos. Backups anteriores sem os novos campos continuam aceitos. Veja `docs/ETAPA-2-RECORRENCIAS.md`.
 
 ### CSV
+
+Escolha **Extrato da conta** para movimentações da conta ou a **Fatura** do cartão para compras no crédito. A prévia mostra o destino antes de gravar. Para corrigir compras registradas anteriormente no extrato da conta, abra **Cartões → Ver fatura → Vincular despesas importadas**. Confira a competência, selecione os lançamentos que constam na fatura e revise os saldos antes de confirmar.
 
 Colunas obrigatórias: `data`, `descricao`, `valor`. Opcionais: `tipo`, `categoria`. Aceita vírgula ou ponto e vírgula, datas ISO ou DD/MM/AAAA, aspas e decimais brasileiros. Com `tipo` ausente, valor negativo é despesa e positivo é receita. `tipo=despesa` ou `tipo=receita` prevalece sobre o sinal. “Analisar extrato” não grava nada: abre a prévia com seleção, categorias, possíveis duplicatas e saldo antes/depois. Confirme para gravar somente os selecionados como efetivados. A conferência é recalculada na confirmação.
 

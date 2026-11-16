@@ -1,5 +1,5 @@
 import {accountBalance, normalize, uid, validateState} from './domain.mjs';
-import {validCivilDate, purchaseInvoiceMonth, assertPurchaseAllowed, hasPaidPurchase} from './billing.mjs';
+import {validCivilDate, validMonth, cycleConfigured, invoiceFor, purchaseInvoiceMonth, assertPurchaseAllowed, hasPaidPurchase} from './billing.mjs';
 
 export function applyCsvType(records, type='auto') {
   if(!['auto','expense','income'].includes(type))throw new Error('Escolha Despesa, Receita ou Usar o tipo do arquivo.');
@@ -30,6 +30,53 @@ export function planCsvTypeCorrection(state, ids, type) {
 }
 
 const fingerprint = row => [row.date, row.type, row.amount, normalize(row.description.trim()), row.accountId].join('|');
+
+export function csvCardCorrectionCandidates(state, card, month) {
+  if (!cycleConfigured(card) || !validMonth(month)) return [];
+  return state.transactions.filter(row =>
+    row.accountId === card.accountId && !row.cardId && row.type === 'expense' &&
+    row.status !== 'cancelled' && normalize(row.description.trim()) !== 'pagamento recebido' &&
+    canCorrectCsvType(state, row) && purchaseInvoiceMonth(card, row.date) === month
+  );
+}
+
+export function planCsvCardCorrection(state, {ids, cardId, month}) {
+  const card = state.cards.find(row => row.id === cardId);
+  if (!card || !cycleConfigured(card) || !validMonth(month)) {
+    throw new Error('Selecione uma fatura com fechamento e vencimento configurados.');
+  }
+  const selected = new Set(ids);
+  if (!selected.size) throw new Error('Selecione as compras importadas que deseja vincular.');
+  const rows = csvCardCorrectionCandidates(state, card, month).filter(row => selected.has(row.id));
+  if (rows.length !== selected.size) {
+    throw new Error('A seleção contém lançamentos protegidos, já vinculados ou fora do ciclo desta fatura.');
+  }
+
+  const before = invoiceFor(state, card, month);
+  if (before.status === 'paid') throw new Error('A fatura já foi paga e está protegida.');
+  const existing = new Set(state.transactions.filter(row => row.cardId === cardId && row.status !== 'cancelled').map(fingerprint));
+  const replacements = new Map();
+  for (const row of rows) {
+    const key = fingerprint(row);
+    if (existing.has(key)) {
+      throw new Error(`Possível compra duplicada no cartão: ${row.description}. Revise a seleção.`);
+    }
+    existing.add(key);
+    const purchase = {...row, cardId, status:'completed', installmentCount:1};
+    delete purchase.settledAt;
+    replacements.set(row.id, purchase);
+  }
+  const next = {...state, transactions:state.transactions.map(row => replacements.get(row.id) || row)};
+  validateState(next);
+  return {
+    transactions:next.transactions,
+    count:rows.length,
+    accountBefore:accountBalance(state, card.accountId),
+    accountAfter:accountBalance(next, card.accountId),
+    invoiceBefore:before,
+    invoiceAfter:invoiceFor(next, card, month)
+  };
+}
 
 // Pure preview: no IDs, persistence, network calls, or financial mutations.
 export function previewCsvImport(state, records, accountId, cardId = '', invoiceMonth = '') {

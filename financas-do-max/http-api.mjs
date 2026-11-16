@@ -29,6 +29,14 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       if(['/api/login','/api/signup'].includes(path)&&req.method==='POST'){
         res.setHeader('Set-Cookie',await auth.login(await body(req),path==='/api/signup',req.headers.origin));return send(200,{ok:true});
       }
+      if(path==='/api/password-reset/request'&&req.method==='POST'){
+        await auth.requestPasswordReset(await body(req),req.headers.origin);
+        return send(200,{ok:true});
+      }
+      if(path==='/api/password-reset/confirm'&&req.method==='POST'){
+        res.setHeader('Set-Cookie',await auth.resetPassword(await body(req),req.headers.origin));
+        return send(200,{ok:true});
+      }
       if(path==='/api/logout'&&req.method==='POST'){res.setHeader('Set-Cookie',await auth.logout(req));return send(200,{ok:true});}
       const user=await auth.user(req);if(!user?.id)return send(401,{error:'Entre na sua conta para continuar.'});
       if(path==='/api/notifications/status'&&req.method==='GET')return send(200,push.status());

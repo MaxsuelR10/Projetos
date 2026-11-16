@@ -1,7 +1,7 @@
 import {summaryFor, sortSelectOptions, uncategorizedOption} from './summary.mjs';
 import {STORE_KEY as BASE_STORE_KEY,currency,uid,localDate,monthName,shiftMonth,moneyInput,normalize,monthlyRows,totals,categoryTotals,dailyTotals,cumulative,accountBalance,installmentSummary,evaluateAgents,assistantReply,parseCSV,csvExport,validateState,seedState,financialReport,pendingExpenses} from './domain.mjs';
 import {invoiceFor, cardCommitment, creditInstallmentPlans, cycleConfigured, assertPurchaseAllowed, assertPurchaseEditable, hasPaidPurchase, registerInvoicePayment, editInvoicePayment, cancelInvoicePayment} from './billing.mjs';
-import {previewCsvImport, csvSelectionSummary, buildCsvImport, applyCsvType, canCorrectCsvType, planCsvTypeCorrection} from './csv-import.mjs';
+import {previewCsvImport, csvSelectionSummary, buildCsvImport, applyCsvType, canCorrectCsvType, planCsvTypeCorrection, csvCardCorrectionCandidates, planCsvCardCorrection} from './csv-import.mjs';
 import {appendAudit} from './audit.mjs';
 import {createRecurrenceUI} from './ui-recurrences.mjs';
 import {createSubscriptionCalendarUI} from './ui-subscription-calendar.mjs';
@@ -22,7 +22,7 @@ document.addEventListener('click',async event=>{
 const STORE_KEY=BASE_STORE_KEY+':user:'+session.id;
 function initialState(){const s=seedState();for(const key of ['transactions','cards','installments','subscriptions','investments','messages','agents','recurrences','audit'])if(Array.isArray(s[key]))s[key]=[];s.accounts=[{id:'wallet',name:'Minha carteira',type:'Dinheiro',color:'#72dbb0',openingBalance:0}];s.profile.name=session.name||'Meu espaço';return s;}
 let remoteStatus='Conectando ao Neon…',remoteReady=false;
-let savingInvoice=false;
+let savingConfirmedChange=false;
 const remote=createRemoteStorage({onStatus:message=>{remoteStatus=message;const el=document.querySelector('#sync-status');if(el)el.textContent=message;}});
 const $=s=>document.querySelector(s);
 function mountThemeControls(){
@@ -74,7 +74,7 @@ const options=(list,value,key='name')=>[...list].sort((a,b)=>String(a[key]).loca
 const empty=(title,desc,action='transaction',label='Adicionar transação')=>`<div class="empty">${icon('wallet',32)}<h3>${e(title)}</h3><p>${e(desc)}</p>${action?button(label,action,'plus','btn primary'):''}</div>`;
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('show'),4500);}
 function commit(update,message){
-  if(savingInvoice)throw new Error('Aguarde a confirmação do pagamento.');
+  if(savingConfirmedChange)throw new Error('Aguarde a confirmação da alteração.');
   const next=structuredClone(state);
   update(next);
   appendAudit(state,next,{action:message||'Dados financeiros atualizados'});
@@ -82,20 +82,20 @@ function commit(update,message){
   try{persistState(next);}catch{throw new Error('Não foi possível salvar neste navegador. Exporte um backup e verifique o espaço disponível.');}
   state=next;render();if(message)toast(message);
 }
-async function commitInvoice(update,message){
-  if(savingInvoice||!remoteReady)throw new Error('Aguarde a sincronização ou recarregue a página antes de registrar o pagamento.');
+async function commitConfirmed(update,message){
+  if(savingConfirmedChange||!remoteReady)throw new Error('Aguarde a sincronização ou recarregue a página antes de salvar.');
   const next=structuredClone(state);
   update(next);
   appendAudit(state,next,{action:message});
   validateState(next);
-  savingInvoice=true;
+  savingConfirmedChange=true;
   try{
     await remote.save(next);
   }catch(error){
     remoteReady=false;
     throw error;
   }finally{
-    savingInvoice=false;
+    savingConfirmedChange=false;
   }
   state=next;
   try{localStorage.setItem(STORE_KEY,JSON.stringify(next));}catch{/* The confirmed copy is already stored remotely. */}
@@ -295,12 +295,45 @@ function renderCards() {
 }
 function invoiceDetails(id,reference=month) {
   const card=state.cards.find(c=>c.id===id),invoice=invoiceFor(state,card,reference,localDate());
+  const candidates=invoice.status==='paid'?[]:csvCardCorrectionCandidates(state,card,reference);
   openModal('Fatura · '+card.name,`<div class="invoice-detail-summary"><div><span class="eyebrow">${e(monthName(reference))}</span><strong>Original ${currency(invoice.total)}</strong></div>${badge(invoiceStatusLabels[invoice.status],invoice.payment?'soft':'')}</div>
     <p>Pago ${currency(invoice.paidAmount)} · Saldo ${currency(invoice.remainingAmount)} · Vencimento ${dateLabel(invoice.dueDate)}</p>
     <p class="muted">${invoice.configured?'Compras de '+dateLabel(invoice.startDate)+' até antes de '+dateLabel(invoice.closingDate):'Informe o dia de fechamento para calcular o ciclo correto.'}</p>
     ${invoice.remainingAmount&&invoice.configured?button('Registrar pagamento','invoice-pay','check','btn primary',`data-id="${e(id)}" data-month="${e(reference)}"`):''}
     ${invoice.payments.length?`<h3>Pagamentos</h3>${invoice.payments.map(payment=>`<div class="summary-account-row"><span>${currency(payment.amount)} · ${dateLabel(payment.date)} · ${e(acct(payment.accountId).name)}${payment.cancelledAt?` · Cancelado em ${dateLabel(payment.cancelledAt)}`:''}</span>${payment.cancelledAt?'':button('Editar','invoice-payment-edit','','btn small',`data-id="${e(payment.id)}"`)+button('Cancelar pagamento','invoice-payment-cancel','','btn small',`data-id="${e(payment.id)}"`)}</div>`).join('')}`:''}
-    <div class="invoice-item-list">${invoice.items.map(item=>`<button class="transaction-item" data-action="transaction" data-id="${e(item.transactionId)}"><span class="category-icon">${e(cat(item.categoryId).icon)}</span><span class="transaction-info"><strong>${e(item.description)}</strong><small>${e(cat(item.categoryId).name)} · Parcela ${item.index+1}/${item.count} · compra em ${dateLabel(item.purchaseDate)}</small></span><strong class="amount">${currency(item.amount)}</strong></button>`).join('')||'<p class="muted">Nenhuma parcela nesta fatura.</p>'}</div>`,{wide:true});
+    <div class="invoice-item-list">${invoice.items.map(item=>`<button class="transaction-item" data-action="transaction" data-id="${e(item.transactionId)}"><span class="category-icon">${e(cat(item.categoryId).icon)}</span><span class="transaction-info"><strong>${e(item.description)}</strong><small>${e(cat(item.categoryId).name)} · Parcela ${item.index+1}/${item.count} · compra em ${dateLabel(item.purchaseDate)}</small></span><strong class="amount">${currency(item.amount)}</strong></button>`).join('')||'<p class="muted">Nenhuma parcela nesta fatura.</p>'}</div>
+    ${candidates.length?'<button class="btn" type="button" id="link-imported-purchases">Vincular despesas importadas</button>':''}`,{wide:true});
+  $('#link-imported-purchases')?.addEventListener('click',()=>linkImportedPurchases(card,reference,candidates));
+}
+function linkImportedPurchases(card,reference,candidates){
+  let reviewed=null;
+  openModal('Vincular despesas importadas',`<form id="link-imported-form">
+    <p><strong>${e(card.name)} · ${e(monthName(reference))}</strong></p>
+    <p>Selecione apenas lançamentos que constam na fatura do cartão. Os registros serão movidos do extrato da conta para a fatura.</p>
+    <div class="correction-list">${candidates.map(row=>`<label class="correction-item"><input type="checkbox" name="transactionId" value="${e(row.id)}"><span><strong>${e(row.description)}</strong><small>${dateLabel(row.date)} · ${e(cat(row.categoryId).name)} · ${currency(row.amount)}</small></span></label>`).join('')}</div>
+    <div id="link-imported-preview" role="status"></div>
+    ${formFooter('Revisar vínculo')}
+  </form>`,{wide:true,onSubmit:async data=>{
+    if(!reviewed){
+      const plan=planCsvCardCorrection(state,{ids:data.getAll('transactionId'),cardId:card.id,month:reference});
+      reviewed={snapshot:state,plan};
+      $('#link-imported-preview').innerHTML=`<div class="notice">${plan.count} lançamento(s) serão movidos para a fatura.</div>
+        <p>Saldo da conta ${e(acct(card.accountId).name)}: ${currency(plan.accountBefore)} → <strong>${currency(plan.accountAfter)}</strong></p>
+        <p>Saldo a pagar na fatura: ${currency(plan.invoiceBefore.remainingAmount)} → <strong>${currency(plan.invoiceAfter.remainingAmount)}</strong></p>`;
+      $('#link-imported-form [type="submit"]').textContent='Confirmar vínculo';
+      return;
+    }
+    if(state!==reviewed.snapshot)throw new Error('Os dados mudaram. Feche e abra a fatura para revisar novamente.');
+    const {plan}=reviewed;
+    await commitConfirmed(next=>{next.transactions=plan.transactions;},`${plan.count} lançamento(s) vinculados à fatura.`);
+  }});
+  const form=$('#link-imported-form');
+  form.addEventListener('change',()=>{
+    reviewed=null;
+    $('#link-imported-preview').replaceChildren();
+    form.querySelector('.form-error')?.remove();
+    form.querySelector('[type="submit"]').textContent='Revisar vínculo';
+  });
 }
 function invoicePaymentModal(id,reference=month,payment) {
   const card=state.cards.find(c=>c.id===id),invoice=invoiceFor(state,card,reference);
@@ -315,14 +348,14 @@ function invoicePaymentModal(id,reference=month,payment) {
     ${formFooter(payment?'Salvar pagamento':'Registrar pagamento')}</form>`,{onSubmit:form=>{
       const data={accountId:form.get('accountId'),date:form.get('date'),amount:moneyInput(form.get('amount'))};
       return payment
-        ?commitInvoice(s=>editInvoicePayment(s,paymentId,data),'Pagamento atualizado.')
-        :commitInvoice(s=>registerInvoicePayment(s,{...data,cardId:id,month:reference,id:paymentId}),'Pagamento registrado.');
+        ?commitConfirmed(s=>editInvoicePayment(s,paymentId,data),'Pagamento atualizado.')
+        :commitConfirmed(s=>registerInvoicePayment(s,{...data,cardId:id,month:reference,id:paymentId}),'Pagamento registrado.');
     }});
 }
 function invoicePaymentCancelModal(id) {
   const payment=state.invoicePayments.find(item=>item.id===id);
   openModal('Cancelar pagamento de fatura',`<form><p>O cancelamento de ${currency(payment.amount)} devolve o valor ao saldo de ${e(acct(payment.accountId).name)} e recalcula o saldo da fatura.</p>${formFooter('Cancelar pagamento')}</form>`,{
-    onSubmit:()=>commitInvoice(s=>cancelInvoicePayment(s,id,localDate()),'Pagamento cancelado.'),
+    onSubmit:()=>commitConfirmed(s=>cancelInvoicePayment(s,id,localDate()),'Pagamento cancelado.'),
   });
 }
 function cardModal(id='') {
@@ -371,23 +404,29 @@ function correctImportedModal(){
   }catch(error){toast(error.message);}});
 }
 function importModal(){
+  const destinationOptions=(state.cards.length?'<option value="" selected disabled>Escolha o destino</option>':'')+
+    '<option value="account">Extrato da conta</option>'+options(state.cards.map(card=>({...card,id:'card:'+card.id,name:'Fatura · '+card.name})), '');
   openModal('Importar extrato CSV', `<p class="muted">O arquivo é analisado somente neste navegador. Revise os registros e o impacto no saldo antes de confirmar.</p>
-    <div class="notice">Aceita CSV de conta e fatura Nubank (date, title, amount). Para faturas selecione o cartão e o mês do vencimento. Revise as categorias e possíveis duplicatas antes de confirmar.</div>
+    <div class="notice">Escolha a fatura do cartão para registrar compras no crédito. Use Extrato da conta para movimentações da conta.</div>
     <form id="import-form">
-      ${selectField('Conta de destino','accountId',options(state.accounts,account||state.accounts[0]?.id))}${selectField('Cartão da fatura (opcional)','importCardId','<option value="">Extrato da conta</option>'+options(state.cards,''))}${field('Mês de vencimento da fatura','invoiceMonth',month,'month')}${selectField('Tipo dos lançamentos','importType','<option value="expense" selected>Despesa</option><option value="income">Receita</option><option value="auto">Usar o tipo do arquivo</option>')}<p class="hint">Escolha Despesa para compras e contas a pagar, ou Receita para dinheiro que entrou. No modo automático, valores positivos sem tipo são receitas. Faturas de cartão aceitam apenas despesas.</p>
+      ${selectField('Destino da importação','importCardId',destinationOptions,'required')}${selectField('Conta de destino','accountId',options(state.accounts,account||state.accounts[0]?.id))}${field('Mês de vencimento da fatura','invoiceMonth',month,'month')}${selectField('Tipo dos lançamentos','importType','<option value="expense" selected>Despesa</option><option value="income">Receita</option><option value="auto">Usar o tipo do arquivo</option>')}<p class="hint">Escolha Despesa para compras e contas a pagar, ou Receita para dinheiro que entrou. No modo automático, valores positivos sem tipo são receitas. Faturas de cartão aceitam apenas despesas.</p>
       <label class="file-drop">${icon('upload',28)}<strong>Escolha seu extrato CSV</strong><span>Até 5 MB / 10.000 registros · datas AAAA-MM-DD ou DD/MM/AAAA</span><input type="file" name="file" accept=".csv,text/csv" required aria-label="Arquivo CSV"></label>
       <p id="csv-import-error" class="form-error" role="alert"></p><div id="import-preview"></div>
       <div class="form-footer">${button('Baixar modelo','csv-template','download','btn','type="button"')}<button type="submit" class="btn primary">Analisar extrato</button></div>
     </form>`, {wide:true});
   $('#modal-root .modal').classList.add('csv-import-modal');
   const form=$('#import-form'), previewNode=$('#import-preview'), errorNode=$('#csv-import-error'), submit=form.querySelector('button[type="submit"]');
+  const selectedCardId=()=>form.elements.importCardId.value.startsWith('card:')?form.elements.importCardId.value.slice(5):'';
   let records=null, preview=null, selected=new Set(), previewPage=0;
   const pageSize=50;const selectedValue=(value,match)=>value===match?'selected':'';
   const reset=()=>{records=null;preview=null;selected.clear();previewPage=0;previewNode.innerHTML='';errorNode.textContent='';submit.textContent='Analisar extrato';submit.disabled=false;};
   const summaryMarkup=()=> {
     const summary=csvSelectionSummary(preview,selected);
+    const destination=preview.cardId
+      ? 'Fatura · '+state.cards.find(card=>card.id===preview.cardId).name+' · '+monthName(preview.invoiceMonth)
+      : 'Extrato da conta · '+acct(preview.accountId).name;
     submit.textContent=`Confirmar importação (${summary.count})`;submit.disabled=!summary.count;
-    return `<div class="csv-summary" role="status"><span>Saldo registrado antes<strong>${currency(summary.balanceBefore)}</strong></span><span>Entradas selecionadas<strong>${currency(summary.income)}</strong></span><span>Saídas selecionadas<strong>${currency(summary.expense)}</strong></span><span>Saldo após importação<strong>${currency(summary.balanceAfter)}</strong></span></div><p class="hint">${summary.count} registro(s) selecionado(s). ${records?.skippedPayments||0} pagamento(s) de fatura ignorado(s). ${preview.duplicateCount} possível(is) duplicata(s) ignorada(s). ${preview.cardId?'Compras no cartão não alteram o saldo da conta; confira o mês da fatura.':'A projeção considera os registros selecionados como efetivados.'}</p>`;
+    return `<p><strong>${e(destination)}</strong></p><div class="csv-summary" role="status"><span>Saldo registrado antes<strong>${currency(summary.balanceBefore)}</strong></span><span>Entradas selecionadas<strong>${currency(summary.income)}</strong></span><span>${preview.cardId?'Compras selecionadas':'Saídas selecionadas'}<strong>${currency(summary.expense)}</strong></span><span>Saldo após importação<strong>${currency(summary.balanceAfter)}</strong></span></div><p class="hint">${summary.count} registro(s) selecionado(s). ${records?.skippedPayments||0} pagamento(s) de fatura ignorado(s). ${preview.duplicateCount} possível(is) duplicata(s) ignorada(s).</p>`;
   };
   const renderSummary=()=>{$('#csv-summary').innerHTML=summaryMarkup();};
   const renderPreview=()=> {
@@ -399,10 +438,10 @@ function importModal(){
       <p class="hint">Duplicatas usam data, descrição, valor, tipo e conta. Se uma repetição for legítima, cadastre-a manualmente. Revise o tipo e a categoria de cada lançamento antes de confirmar.</p>`;
   };
   form.addEventListener('change',ev=>{
-    if(ev.target.matches('[name="importCardId"]')){const card=state.cards.find(c=>c.id===ev.target.value);if(card){form.elements.accountId.value=card.accountId;form.elements.importType.value='expense';}form.elements.importType.disabled=!!card;}
+    if(ev.target.matches('[name="importCardId"]')){const card=state.cards.find(c=>c.id===selectedCardId());if(card){form.elements.accountId.value=card.accountId;form.elements.importType.value='expense';}form.elements.importType.disabled=!!card;}
     if(ev.target.matches('[name="file"],[name="accountId"],[name="importCardId"],[name="invoiceMonth"],[name="importType"]'))reset();
     if(ev.target.matches('[data-csv-category]')){const index=Number(ev.target.dataset.csvCategory),category=state.categories.find(c=>c.id===ev.target.value);if(category){records[index].categoryName=category.name;preview.rows[index].categoryId=category.id;}}
-    if(ev.target.matches('[data-csv-type]')){const index=Number(ev.target.dataset.csvType);records[index].type=ev.target.value;preview=previewCsvImport(state,records,form.elements.accountId.value,form.elements.importCardId.value,form.elements.invoiceMonth.value);selected=new Set([...selected].filter(i=>!preview.rows[i].duplicate));renderPreview();}
+    if(ev.target.matches('[data-csv-type]')){const index=Number(ev.target.dataset.csvType);records[index].type=ev.target.value;preview=previewCsvImport(state,records,form.elements.accountId.value,selectedCardId(),form.elements.invoiceMonth.value);selected=new Set([...selected].filter(i=>!preview.rows[i].duplicate));renderPreview();}
     if(ev.target.matches('[data-csv-row]')){
       const index=Number(ev.target.dataset.csvRow);
       if(ev.target.checked)selected.add(index);else selected.delete(index);
@@ -417,7 +456,8 @@ function importModal(){
   form.addEventListener('submit',async ev=>{
     ev.preventDefault();errorNode.textContent='';submit.disabled=true;
     try{
-      const accountId=form.elements.accountId.value, cardId=form.elements.importCardId.value, invoiceMonth=form.elements.invoiceMonth.value;
+      if(!form.elements.importCardId.value)throw new Error('Escolha onde importar o CSV.');
+      const accountId=form.elements.accountId.value, cardId=selectedCardId(), invoiceMonth=form.elements.invoiceMonth.value;
       if(!preview){
         const file=form.elements.file.files[0];
         if(!file)throw new Error('Selecione um arquivo CSV.');
@@ -434,7 +474,7 @@ function importModal(){
         closeModal();toast(`${result.transactions.length} registros importados. ${result.duplicateCount} possíveis duplicatas ignoradas.`);
       }
     }catch(error){errorNode.textContent=error.message;}
-    finally{for(const name of ['file','accountId','importCardId','invoiceMonth'])form.elements[name].disabled=false;form.elements.importType.disabled=!!form.elements.importCardId.value;submit.disabled=preview?!csvSelectionSummary(preview,selected).count:false;}
+    finally{for(const name of ['file','accountId','importCardId','invoiceMonth'])form.elements[name].disabled=false;form.elements.importType.disabled=!!selectedCardId();submit.disabled=preview?!csvSelectionSummary(preview,selected).count:false;}
   });
 }
 function restoreModal(){openModal('Restaurar backup',`<p class="muted">O backup substituirá os dados atuais após a validação. Exporte uma cópia primeiro.</p><form id="restore-form"><label class="file-drop">${icon('upload',28)}<strong>Selecione um backup JSON</strong><input type="file" name="file" accept=".json,application/json" required aria-label="Backup JSON"></label><div id="restore-error" role="alert" class="form-error"></div><label class="check-label"><input type="checkbox" name="confirm" required> Confirmo a substituição dos dados deste navegador.</label>${formFooter('Restaurar')}</form>`);const form=$('#restore-form');form.addEventListener('submit',async ev=>{ev.preventDefault();try{const file=form.elements.file.files[0];if(!file||file.size>10_000_000)throw new Error('Selecione um backup de até 10 MB.');const restored=validateState(JSON.parse(await file.text()));persistState(restored);state=restored;corruptedBackup=null;account='';overviewCardId='';summaryAccount='';summaryCategory='';filters={search:'',category:'',kind:'',hidden:false,sort:'newest',day:'',status:'',basis:'consumption'};closeModal();render();toast('Backup restaurado.');}catch(err){$('#restore-error').textContent=err.message;}});}
