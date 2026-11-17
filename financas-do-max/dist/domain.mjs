@@ -1,6 +1,8 @@
 import {invoiceFor, creditInstallmentPlans, installmentAmount, validMonth, validCivilDate} from './billing.mjs';
 import {validateRecurrences} from './recurrences.mjs';
 import {validateAudit} from './audit.mjs';
+import {isValidInstitutionId} from './institutions.mjs';
+
 export const STORE_KEY = 'financas-do-max:v1';
 export const currency = n => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((n || 0) / 100);
 export const uid = () => globalThis.crypto.randomUUID();
@@ -144,6 +146,9 @@ export function validateState(s) {
   const text=(v,max=240)=>typeof v==='string'&&v.length<=max;
   const integer=v=>Number.isSafeInteger(v)&&Math.abs(v)<=100_000_000_000;
   for(const field of ['accounts','categories','transactions','cards','installments','subscriptions','agents','investments']){const ids=new Set();for(const x of s[field]){if(!x||!text(x.id,100)||ids.has(x.id))throw new Error(`Identificador inválido em ${field}.`);ids.add(x.id);}}
+  for(const [kind, records] of [['conta',s.accounts],['cartão',s.cards]]) {
+    if(records.some(record=>!isValidInstitutionId(record.institutionId)))throw new Error(`Instituição financeira inválida em ${kind}.`);
+  }
   for(const a of s.accounts)if(!text(a.name,80)||!integer(a.openingBalance)||!text(a.color,30))throw new Error('Conta inválida.');
   for(const c of s.categories)if(!text(c.name,80)||!text(c.icon,12)||!integer(c.budget)||c.budget<0||!Array.isArray(c.keywords)||c.keywords.some(k=>!text(k,100)))throw new Error('Categoria inválida.');
   for(const t of s.transactions){if(!text(t.description)||!validDate(t.date)||!integer(t.amount)||t.amount<=0||!['income','expense','transfer'].includes(t.type)||!s.accounts.some(a=>a.id===t.accountId)||t.type==='transfer'&&(!s.accounts.some(a=>a.id===t.toAccountId)||t.accountId===t.toAccountId)||t.cardId&&!s.cards.some(c=>c.id===t.cardId)||t.categoryId&&!s.categories.some(c=>c.id===t.categoryId))throw new Error('Transação inválida no backup.');}

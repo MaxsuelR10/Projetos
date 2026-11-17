@@ -7,8 +7,8 @@ import {createPushRepository} from '../push-repository.mjs';
 
 test('a sessão determina o proprietário de leituras e gravações, inclusive após trocar de conta', async t => {
   const rows = new Map([
-    ['user:alice', {revision: 1, state: {accounts: [{id: 'a'}], messages: ['alice']}}],
-    ['user:bob', {revision: 1, state: {accounts: [{id: 'b'}], messages: ['bob']}}]
+    ['user:alice', {revision: 1, state: {accounts: [{id: 'a', institutionId: 'nubank'}], cards: [{id: 'a-card', institutionId: 'mercado-pago'}], messages: ['alice']}}],
+    ['user:bob', {revision: 1, state: {accounts: [{id: 'b', institutionId: 'inter'}], cards: [{id: 'b-card', institutionId: 'santander'}], messages: ['bob']}}]
   ]);
   const server = createServer(createApi({VERCEL_DEPLOYMENT_ID: 'versao-teste'}, {
     auth: {user: async req => /^session=(alice|bob)$/.exec(req.headers.cookie)?.[1]
@@ -31,7 +31,7 @@ test('a sessão determina o proprietário de leituras e gravações, inclusive a
     method: 'PUT',
     headers: {Cookie: cookie, Origin: origin, 'Content-Type': 'application/json',
       ...(user ? {'X-Financas-User': user} : {})},
-    body: JSON.stringify({revision: 1, userId: 'bob', state: {accounts: []}})
+    body: JSON.stringify({revision: 1, userId: 'bob', state: {accounts: [{id: 'a', institutionId: 'custom'}], cards: [{id: 'a-card', institutionId: 'banco-do-brasil'}]}})
   });
   for (const path of ['/api/session', '/api/state', '/api/assistant/conversations/latest',
     '/api/chat/status', '/api/notifications/status', '/api/notifications/cron']) {
@@ -39,7 +39,9 @@ test('a sessão determina o proprietário de leituras e gravações, inclusive a
   }
   const own = await get('/api/state?userId=bob', {Cookie: 'session=alice', 'X-Financas-User': 'alice'});
   assert.equal(own.headers.get('cache-control'), 'no-store');
-  assert.equal((await own.json()).state.accounts[0].id, 'a');
+  const ownState = (await own.json()).state;
+  assert.equal(ownState.accounts[0].institutionId, 'nubank');
+  assert.equal(ownState.cards[0].institutionId, 'mercado-pago');
   const messages = await get('/api/assistant/conversations/latest?userId=bob', {Cookie: 'session=alice'});
   assert.deepEqual((await messages.json()).messages, ['alice']);
   assert.equal((await get('/api/state', {Cookie: 'session=bob', 'X-Financas-User': 'alice'})).status, 409);
@@ -47,7 +49,10 @@ test('a sessão determina o proprietário de leituras e gravações, inclusive a
   assert.equal((await update('session=bob')).status, 409);
   assert.equal((await update('session=alice', 'alice')).status, 200);
   assert.equal(rows.get('user:alice').revision, 2);
-  assert.equal(rows.get('user:bob').state.accounts[0].id, 'b');
+  assert.equal(rows.get('user:alice').state.accounts[0].institutionId, 'custom');
+  assert.equal(rows.get('user:alice').state.cards[0].institutionId, 'banco-do-brasil');
+  assert.equal(rows.get('user:bob').state.accounts[0].institutionId, 'inter');
+  assert.equal(rows.get('user:bob').state.cards[0].institutionId, 'santander');
   assert.deepEqual(await (await get('/api/release')).json(), {release: 'versao-teste'});
 });
 

@@ -1,0 +1,137 @@
+.institution-identity,
+.invoice-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.institution-identity > span:last-child:not(.institution-logo) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.institution-identity strong,
+.institution-identity small {
+  display: block;
+}
+
+.institution-logo {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.institution-neutral {
+  display: inline-grid;
+  place-items: center;
+  background: #344054;
+  color: #fff;
+}
+
+.account-card .institution-logo,
+.visual-card .institution-logo,
+.institution-preview .institution-logo {
+  width: 40px;
+  height: 40px;
+}
+
+.visual-card {
+  background: var(--institution-bg);
+  color: var(--institution-text);
+  border-color: var(--institution-accent);
+  border-inline-start-width: 4px;
+  min-height: 195px;
+  aspect-ratio: auto;
+}
+
+.visual-card .card-bottom {
+  overflow-wrap: anywhere;
+  gap: 8px;
+}
+
+.institution-field {
+  min-width: 0;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+}
+
+.institution-field legend {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.institution-field legend small {
+  font-weight: 400;
+}
+
+.institution-preview {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 8px 12px;
+  border: 1px solid var(--institution-accent);
+  border-radius: 10px;
+  background: var(--institution-bg);
+  color: var(--institution-text);
+}
+
+.institution-picker {
+  margin-top: 8px;
+}
+
+.institution-picker summary {
+  min-height: 44px;
+  padding: 10px 6px;
+  cursor: pointer;
+}
+
+.institution-picker input[type="search"] {
+  font-size: 16px;
+}
+
+.institution-options {
+  list-style: none;
+  padding: 3px;
+  margin: 6px 0 0;
+  max-height: 216px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.institution-options button {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.institution-options button:hover,
+.institution-options button[aria-pressed="true"] {
+  background: var(--panel-hi);
+  border-color: var(--border);
+}
+
+.institution-options button:focus-visible,
+.institution-picker summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.institution-suggestion {
+  margin-top: 8px;
+}

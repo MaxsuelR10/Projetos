@@ -7,7 +7,7 @@ import {extname} from 'node:path';
 import {createApi} from '../http-api.mjs';
 import {seedState} from '../dist/domain.mjs';
 
-const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright-core');
+const {chromium, webkit, devices} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH || 'playwright-core');
 let state = seedState(), revision = 1;
 const env = {VERCEL_DEPLOYMENT_ID: 'primeira'};
 const api = createApi(env, {
@@ -40,8 +40,93 @@ const server = createServer(async (req, res) => {
 server.listen(0,'127.0.0.1');
 await once(server, 'listening');
 const origin = 'http://127.0.0.1:' + server.address().port;
+async function testInstitutions(page) {
+  await page.goto(origin+'/#/accounts');
+  const dialog = page.getByRole('dialog');
+  const openPicker = () => dialog.getByText('Escolher instituição', {exact:true}).click();
+  const search = dialog.getByRole('searchbox', {name:'Buscar instituição'});
+  const preview = dialog.locator('.institution-preview');
+  const choose = async (id, query, keyboard = false) => {
+    await openPicker();
+    await search.fill(query);
+    const option = dialog.locator(`button[data-institution-id="${id}"]`);
+    await option.waitFor();
+    if (keyboard) {
+      await search.press('ArrowDown');
+      assert.equal(await option.evaluate(button => document.activeElement === button), true);
+      await option.press('Enter');
+    } else {
+      await option.click();
+    }
+    assert.equal(await dialog.locator('input[name=institutionId]').inputValue(), id);
+  };
+  const save = async () => {
+    const saved = page.waitForResponse(res => res.url().endsWith('/api/state') && res.request().method() === 'PUT');
+    await dialog.getByRole('button', {name:'Salvar', exact:true}).click();
+    assert.equal((await saved).status(), 200);
+    await dialog.waitFor({state:'detached'});
+  };
+  const expectLogo = async (root, id) => {
+    const image = root.locator(`img[src="./institution-logos/${id}.svg"]`).first();
+    await image.waitFor();
+    await image.evaluate(img => img.decode());
+    assert.ok(await image.evaluate(img => img.naturalWidth > 0));
+  };
+  await page.locator('.account-card').filter({hasText:'Banco Aurora'}).locator('.institution-neutral').waitFor();
+  for (const [id, name, query] of [['nubank','Conta principal','Nubank'],['inter','Conta de reserva','Banco Inter']]) {
+    await page.getByRole('button', {name:'Adicionar conta'}).click();
+    await dialog.getByRole('textbox', {name:'Nome da conta'}).fill(name);
+    await choose(id, query, id === 'nubank');
+    await expectLogo(preview, id);
+    await save();
+    await expectLogo(page.locator('.account-card').filter({hasText:name}), id);
+  }
+
+  await page.locator('.account-card').filter({hasText:'Conta de reserva'}).getByRole('button', {name:'Editar'}).click();
+  await openPicker();
+  await search.fill('zzzz');
+  await dialog.getByRole('status').getByText('Nenhuma instituição encontrada.').waitFor();
+  await search.press('Escape');
+  assert.equal(await dialog.locator('details').evaluate(details => details.open), false);
+  await choose('custom', 'personalizado');
+  await preview.getByText('Personalizado').waitFor();
+  await save();
+  assert.equal(state.accounts.find(account => account.name === 'Conta de reserva').institutionId, 'custom');
+
+  await page.goto(origin+'/#/cards');
+  for (const [id, name, query] of [['mercado-pago','Cartão do dia a dia','mercado pago'],['santander','Cartão de viagem','santander']]) {
+    await page.getByRole('button', {name:'Adicionar cartão', exact:true}).click();
+    await dialog.getByRole('textbox', {name:'Nome do cartão'}).fill(name);
+    await dialog.locator('[name=limit]').fill('1000');
+    await dialog.locator('[name=closingDay]').fill('5');
+    await dialog.locator('[name=dueDay]').fill('12');
+    await dialog.getByLabel('Conta vinculada').selectOption({label:'Conta principal · Nubank'});
+    await choose(id, query);
+    await save();
+    await expectLogo(page.locator('.visual-card').filter({hasText:name}), id);
+  }
+
+  const travelCard = page.locator('.credit-card-panel').filter({hasText:'Cartão de viagem'});
+  await travelCard.getByRole('button', {name:'Editar'}).click();
+  await choose('banco-do-brasil', 'banco do brasil');
+  await save();
+  await page.reload();
+  await expectLogo(travelCard, 'banco-do-brasil');
+  assert.equal(await travelCard.locator('.visual-card').evaluate(card => getComputedStyle(card).color), 'rgb(0, 61, 122)');
+  await travelCard.getByRole('button', {name:'Ver fatura'}).click();
+  await expectLogo(dialog, 'banco-do-brasil');
+  for (const card of state.cards.filter(card => card.name.startsWith('Cartão '))) {
+    assert.equal(card.accountId, state.accounts.find(account => account.name === 'Conta principal').id);
+  }
+  await dialog.getByRole('button', {name:'Fechar',exact:true}).click();
+  await page.goto(origin+'/#/overview');
+  await expectLogo(page.locator('.summary-accounts'), 'nubank');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+}
+
 const executablePath = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 let browser;
+let safari;
 try {
   browser = await chromium.launch({executablePath,headless:true,timeout:10000});
   const context = await browser.newContext({viewport:{width:320,height:640},deviceScaleFactor:2,isMobile:true,hasTouch:true});
@@ -79,6 +164,17 @@ try {
       assert.ok(scroll<=client+1,route+' @ '+width+' '+scroll+'/'+client);
     }
   }
+  await page.setViewportSize({width:390,height:780});
+  await testInstitutions(page);
+  console.log('Chromium móvel: marcas, teclado, edição, gravação, recarga e logotipos com service worker ativo.');
+  if (process.env.PLAYWRIGHT_TEST_WEBKIT === '1') {
+    safari = await webkit.launch({headless:true});
+    const mobile = await safari.newContext(devices['iPhone 13']);
+    await mobile.addCookies([{name:'sandbox', value:'yes', url:origin}]);
+    state = seedState();
+    await testInstitutions(await mobile.newPage());
+    console.log('WebKit com perfil de iPhone: formulários, faturas, logotipos e persistência.');
+  }
   await page.goto(origin+'/#/transactions');
   await page.goto(origin+'/#/cards');
   await page.goBack();
@@ -110,6 +206,7 @@ try {
   assert.deepEqual(failures,[]);
   console.log('Chrome: login e cadastro fictícios, sessão após recarga, modal, oito telas em quatro larguras, Voltar, atualização e abertura offline.');
 } finally {
+  await safari?.close();
   await browser?.close();
   server.closeAllConnections();
   server.close();
