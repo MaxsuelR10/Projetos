@@ -84,7 +84,7 @@ export async function requireSession(){
       }
       const {title,description,fields,submit,actions}=views[view];
       app.innerHTML=`<main class="auth-page"><form class="panel auth-panel">
-        <img src="./mark.svg" width="48" height="48" alt="Finanças do Max">
+        <img src="./finance-icon.png" width="96" height="96" alt="Finanças do Max">
         <h1 tabindex="-1">${title}</h1>
         ${description?`<p>${description}</p>`:''}
         ${fields||''}
