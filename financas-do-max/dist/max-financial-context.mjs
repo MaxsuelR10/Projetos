@@ -1,3 +1,4 @@
+import {isPurchaseQuestion} from './purchase-budget.mjs';
 import {financialReport,accountBalance,pendingExpenses,shiftMonth,findDuplicates,installmentSummary,assistantReply,currency} from './domain.mjs';
 import {creditInstallmentPlans,validMonth} from './billing.mjs';
 
@@ -15,7 +16,7 @@ export function maxFinancialContext(state,month){
   return {
     mes:month,moeda:'BRL',base:'Registros manuais da conta autenticada; não são saldos consultados nos bancos.',
     caixa:{...summary(cash),criterio:'Somente valores liquidados; cartão entra no caixa ao pagar a fatura.'},
-    consumo:{...summary(consumption),criterio:'Compras pela data do lançamento; pagamento da fatura não soma a despesa novamente.'},
+    consumo:{...summary(consumption),criterio:'Despesas em conta pela data do lançamento; cartão pelo mês de vencimento de cada parcela. Pagamento da fatura não soma a despesa novamente.'},
     mesAnterior:{mes:shiftMonth(month,-1),consumo:summary(previous)},
     saldoRegistradoEmContas:money(state.accounts.reduce((sum,a)=>sum+accountBalance(state,a.id),0)),
     pendenciasDoMes:money(pendingExpenses(state,month)),
@@ -30,5 +31,6 @@ export function maxFinancialContext(state,month){
 }
 
 export function localMaxReply(state,month,message){
+  if(isPurchaseQuestion(message))return 'Use a opção “Essa compra cabe no orçamento?” e informe valor, categoria, data e forma de pagamento. Assim calculo o impacto no orçamento e nas faturas.';
   return assistantReply(state,month,message);
 }

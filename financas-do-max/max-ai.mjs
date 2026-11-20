@@ -1,3 +1,4 @@
+import {purchaseBudgetReply,isPurchaseQuestion} from './dist/purchase-budget.mjs';
 import {generateText} from 'ai';
 import {createGoogle} from '@ai-sdk/google';
 import {maxFinancialContext,localMaxReply} from './dist/max-financial-context.mjs';
@@ -15,7 +16,9 @@ export function createMaxAI(env=process.env,{generate=generateText,now=Date.now,
   const fallback=(state,month,message,notice)=>({content:localMaxReply(state,month,message),source:'local',month,notice});
   return {
     status(){return {configured:enabled,provider:'Gemini',model:enabled?model:null};},
-    async reply({state,month,message,userId}){
+    async reply({state,month,message,userId,purchase}){
+      if(purchase)return {content:purchaseBudgetReply(state,purchase),source:'local',month,notice:'Consulta guiada calculada diretamente dos registros, disponível nos modos local e Gemini.'};
+      if(isPurchaseQuestion(message))return {content:'Use a opção “Essa compra cabe no orçamento?” no chat. Informe o valor, a categoria, a data e a forma de pagamento para calcular o impacto correto.',source:'local',month};
       if(!enabled)return fallback(state,month,message,'O Gemini ainda não está disponível. Esta resposta usa os cálculos locais.');
       const time=now();
       for(const [id,entry]of users)if(!entry.busy&&time-entry.start>=60000)users.delete(id);

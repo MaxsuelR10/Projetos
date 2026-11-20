@@ -24,3 +24,28 @@ test('UI identifica fallback local e mantém modo local sem chamar endpoint do G
   await f.chat.init();await f.chat.send('Quanto gastei este mês?');assert.equal(calls,1);assert.equal(f.state().messages.at(-1).source,'local');
   assert.match(f.chat.render(),/Gemini · indisponível/);
 });
+
+
+test('pergunta de compra abre consulta guiada em vez de retornar categorias aleatórias',async()=>{
+  const f=fixture(()=>assert.fail('Não deve consultar o provedor'));
+  await f.chat.send('Quero comprar um tênis. Cabe no meu orçamento?');
+  assert.equal(f.state().messages.length,0);
+  assert.match(f.chat.render(),/id="purchase-form"/);
+  assert.match(f.chat.render(),/Escolha a categoria/);
+});
+
+test('consulta guiada local e Gemini transporta dados estruturados e fecha formulário após resposta',async()=>{
+  for(const gemini of [false,true]){
+    let sent;
+    const f=fixture(async(url,options)=>{if(url.endsWith('/status'))return Response.json({configured:true});sent=JSON.parse(options.body);return Response.json({content:'Cabe no orçamento da categoria.',source:'local'});});
+    await f.chat.init();if(gemini)f.gemini();
+    const purchase={amount:15000,categoryId:f.state().categories[0].id,date:'2026-11-20',installments:1,payment:'cash',cardId:''};
+    await f.chat.send('Quero comprar algo');
+    await f.chat.send('Essa compra cabe no orçamento?',purchase);
+    assert.equal(f.state().messages.at(-1).source,'local');
+    assert.match(f.state().messages.at(-1).content,/orçamento da categoria/);
+    assert.ok(!f.chat.render().includes('id="purchase-form"'));
+    if(gemini){assert.deepEqual(sent.purchase,purchase);assert.equal(sent.month,'2026-11');}
+    else assert.equal(sent,undefined);
+  }
+});

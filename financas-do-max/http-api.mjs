@@ -65,10 +65,10 @@ export function createApi(env=process.env,{auth,storeFactory=createStore,maxAI=c
       if(path==='/api/chat/status'&&req.method==='GET')return send(200,maxAI.status());
       if(path==='/api/chat'&&req.method==='POST'){
         const input=await body(req);
-        if(!input||typeof input.message!=='string'||!input.message.trim()||input.message.length>2000||!validMonth(input.month)||!Number.isSafeInteger(input.revision)||input.revision<1)return send(400,{error:'Informe uma pergunta de até 2.000 caracteres e um mês válido.'});
+        if(!input||typeof input.message!=='string'||!input.message.trim()||input.message.length>2000||!validMonth(input.month)||!Number.isSafeInteger(input.revision)||input.revision<1||input.purchase!==undefined&&(!input.purchase||typeof input.purchase!=='object'||Array.isArray(input.purchase)))return send(400,{error:'Informe uma pergunta de até 2.000 caracteres e um mês válido.'});
         const snapshot=await storeFactory(env.DATABASE_URL,'user:'+user.id).read();
         if(!snapshot.state||snapshot.revision!==input.revision)return send(409,{error:'Os dados mudaram. Aguarde a sincronização ou recarregue antes de consultar o Max.'});
-        return send(200,await maxAI.reply({state:snapshot.state,month:input.month,message:input.message.trim(),userId:user.id}));
+        return send(200,await maxAI.reply({state:snapshot.state,month:input.month,message:input.message.trim(),userId:user.id,...(input.purchase!==undefined?{purchase:input.purchase}:{})}));
       }
       if(path!=='/api/state')return send(404,{error:'Rota não encontrada.'});
       const store=storeFactory(env.DATABASE_URL,'user:'+user.id);

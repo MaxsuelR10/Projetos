@@ -1,3 +1,4 @@
+import {createMaxAI} from '../max-ai.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -17,4 +18,15 @@ test('chat exige sessão e origem, lê conta autenticada, rejeita revisão antig
   assert.equal((await send({...input,revision:6})).status,409);assert.equal(called,0);
   for(const bad of [null,{...input,message:''},{...input,message:'x'.repeat(2001)},{...input,month:'2026-13'},{...input,revision:'7'}])assert.equal((await send(bad)).status,400);
   const res=await send(input);assert.equal(res.status,200);assert.equal((await res.json()).source,'gemini');assert.equal(workspace,'user:alice');assert.equal(called,1);
+});
+
+
+test('API calcula consulta guiada no estado autenticado e valida os campos da compra',async t=>{
+  const state=seedState();state.transactions=[];state.cards=[];state.categories=[{id:'shopping',name:'Compras',budget:50000}];
+  const api=createApi({APP_ORIGIN:'http://app.test'},{auth:{user:async()=>({id:'alice'})},storeFactory:()=>({read:async()=>({revision:7,state})}),maxAI:createMaxAI({GEMINI_API_KEY:'fake'},{generate:()=>assert.fail('Não depende do provedor')})});
+  const server=createServer(api);await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+  const send=purchase=>fetch(`http://127.0.0.1:${server.address().port}/api/chat`,{method:'POST',headers:{'Content-Type':'application/json',Origin:'http://app.test'},body:JSON.stringify({message:'Cabe?',month:'2026-11',revision:7,purchase})});
+  const purchase={amount:15000,installments:1,date:'2026-11-20',categoryId:'shopping',payment:'cash'};
+  const response=await send(purchase);assert.equal(response.status,200);const reply=await response.json();assert.equal(reply.source,'local');assert.match(reply.content,/350,00/);assert.equal(state.transactions.length,0);
+  for(const bad of [null,[],{...purchase,categoryId:'foreign'}, {...purchase,amount:-100}])assert.equal((await send(bad)).status,400);
 });
